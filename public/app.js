@@ -384,7 +384,7 @@
     } else if (parked.length) {
       const i = parked[parked.length - 1];
       focus = `<div class="focus"><div class="label">A parked idea is waiting</div><div class="big">${esc(i.title)}</div>
-        <div class="where">${plural(parked.length, 'idea')} parked. Deciding one takes about a minute.</div>
+        <div class="where">${plural(parked.length, 'idea')} parked. Parked ${ago(i.created_at)}. Deciding one takes about a minute.</div>
         <div class="actions"><button class="btn" data-act="evaluate" data-id="${i.id}">Evaluate it</button></div></div>`;
     } else {
       focus = `<div class="empty"><strong>${MSG.emptyIdeas}</strong>Write whatever is on your mind into Scratch. Sorting comes later.
@@ -396,11 +396,29 @@
       <div class="n">${cc[q]}</div><div class="k">${QUAD[q].label}</div><div class="d">${esc(QUAD[q].line)}</div></button>`;
     const total = Object.values(cc).reduce((a, b) => a + b, 0);
 
+    // "At a glance": collapsed by default, remembered per browser.
+    const activeProjects = S.projects.filter((p) => p.open);
+    let glanceOpen = false;
+    try { glanceOpen = localStorage.getItem('orbital.glance') === '1'; } catch { /* storage unavailable */ }
+    const num = (n, label) => `<div><div class="n">${n}</div><div class="quiet small">${label}</div></div>`;
+    const glance = S.ideas.length || S.projects.length
+      ? `<section><details class="fold" id="glance"${glanceOpen ? ' open' : ''}><summary>At a glance</summary><div>
+          <div class="glance">${num(st.ideas.parked, 'Parked ideas')}${num(st.projects.active, 'Active projects')}${num(st.tasks.open, 'Open tasks')}${num(st.tasks.done, 'Done tasks')}</div>
+          ${activeProjects.length
+            ? `<ul class="list">${activeProjects.map((p) => `<li><button type="button" class="row" data-act="open-project" data-id="${p.id}">
+                <div class="body"><div class="t">${esc(p.title)}</div>
+                ${p.tasks.length ? `<div class="progress" aria-hidden="true"><span style="width:${p.progress}%"></span></div>` : ''}
+                <div class="s">${p.tasks.length ? `${p.tasks_done} of ${p.tasks.length} done` : 'No tasks yet'}</div></div></button></li>`).join('')}</ul>`
+            : '<p class="quiet">No projects in orbit.</p>'}
+        </div></details></section>`
+      : '';
+
     return `<div class="page">
       <h1>${greeting()}</h1>
       <p class="lead">${esc(S.game.alert_count ? MSG.alert : S.game.streak_message || MSG.idle)}</p>
       ${needs}
       <section>${focus}</section>
+      ${glance}
       ${total ? `<section><h2>Where your ideas sit</h2>
         <div class="quad">${cell('invent')}${cell('deploy')}${cell('offload')}${cell('manage')}</div>
         <div class="axis"><span>Top: core. Bottom: context.</span><span>Right: mission-critical.</span></div>
@@ -412,21 +430,43 @@
     </div>`;
   };
 
+  VIEWS.todayAfter = () => {
+    const d = $('#glance');
+    if (!d) return;
+    d.addEventListener('toggle', () => {
+      try { localStorage.setItem('orbital.glance', d.open ? '1' : '0'); } catch { /* storage unavailable */ }
+    });
+  };
+
   // ---------- Ideas ----------
+  // Calm relative date: "today", "3 days ago", "2 weeks ago", else a locale date.
+  function ago(iso) {
+    const t = new Date(iso).getTime();
+    if (!Number.isFinite(t)) return 'earlier';
+    const days = Math.max(0, Math.floor((Date.now() - t) / 86400000));
+    if (days === 0) return 'today';
+    if (days === 1) return 'yesterday';
+    if (days <= 13) return `${days} days ago`;
+    const weeks = Math.floor(days / 7);
+    if (weeks <= 8) return `${weeks} weeks ago`;
+    return new Date(iso).toLocaleDateString();
+  }
+
   function ideaLine(i) {
     if (i.status === 'dropped') return 'Dropped. That was a decision.';
     if (i.status === 'decided') return i.done_at ? 'Done.' : 'Decided. Now a project.';
     if (i.mandatory && i.result) return `${i.result}${i.mandatory_reason ? ` (${i.mandatory_reason})` : ''}`;
     if (i.result && i.status === 'evaluated') return i.result;
-    if (i.eisenhower_quadrant) return `Parked. ${EIS[i.eisenhower_quadrant]} so far.`;
-    return 'Parked. Not evaluated yet.';
+    if (i.eisenhower_quadrant) return `Parked ${ago(i.created_at)}. ${EIS[i.eisenhower_quadrant]} so far.`;
+    return `Parked ${ago(i.created_at)}. Not evaluated yet.`;
   }
 
   const IDEA_FILTERS = {
     open: { label: 'Open', fn: (i) => i.open },
     parked: { label: 'Parked', fn: (i) => i.status === 'parked' },
     evaluated: { label: 'Evaluated', fn: (i) => i.status === 'evaluated' },
-    closed: { label: 'Done and dropped', fn: (i) => !i.open },
+    decided: { label: 'Decided', fn: (i) => i.status === 'decided' },
+    dropped: { label: 'Dropped', fn: (i) => i.status === 'dropped' },
   };
 
   VIEWS.ideas = () => {

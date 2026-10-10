@@ -271,6 +271,9 @@ details.fold { background: var(--surface); border-radius: var(--radius-lg); padd
 details.fold + details.fold { margin-top: 12px; }
 details.fold summary { cursor: pointer; padding: 16px 0; font-weight: 650; font-size: 19px; }
 details.fold > div { padding-bottom: 20px; }
+.glance { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin: 4px 0 20px; }
+.glance .n { font-size: 26px; font-weight: 650; line-height: 1.2; }
+@media (min-width: 861px) { .glance { grid-template-columns: repeat(4, 1fr); } }
 
 /* ---------- Settings ---------- */
 .panel { background: var(--surface); border-radius: var(--radius-lg); padding: 26px 28px; }

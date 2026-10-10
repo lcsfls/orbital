@@ -1,61 +1,77 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300" width="900" height="300">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300" width="900" height="300" role="img" aria-label="Orbit, the Orbital mascot, in three states: idle, celebrate and alert">
   <style>
-    .label{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;fill:#8b93a7}
-    .title{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:12px;fill:#4ade80;letter-spacing:.08em}
-    @media (prefers-reduced-motion:no-preference){
-      .spin{transform-origin:150px 140px;animation:spin 6s linear infinite}
-      .unspin{transform-origin:150px 76px;animation:spin 6s linear infinite reverse}
-      .spin-fast{transform-origin:450px 140px;animation:spin 1.2s cubic-bezier(.4,0,.2,1) 3}
-      .unspin-fast{transform-origin:450px 76px;animation:spin 1.2s cubic-bezier(.4,0,.2,1) 3 reverse}
-      .blink{animation:blink 4s steps(1) infinite}
-      .pulse{transform-origin:450px 140px;animation:pulse 1.2s ease-out 3}
-      .wiggle{transform-origin:750px 140px;animation:wiggle .5s ease-in-out infinite alternate}
+    .label{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;fill:#b1adc6}
+    .title{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:12px;font-weight:600;fill:#f2b36b;letter-spacing:.08em}
+    /* Every animated group rotates around a point in its own coordinate system.
+       The translate that places the satellite lives on a separate inner group,
+       so the CSS transform never overrides it. */
+    .spin, .unspin, .pulse, .wiggle { transform-box: view-box; }
+    .spin { transform-origin: 150px 140px; }
+    .spin-fast { transform-origin: 450px 140px; }
+    .pulse { transform-origin: 450px 140px; }
+    .wiggle { transform-origin: 750px 140px; }
+    .unspin { transform-origin: 0 0; }
+    .sparks circle { opacity: 0; }
+    @media (prefers-reduced-motion: no-preference) {
+      .spin { animation: spin 8s linear infinite; }
+      .spin .unspin { animation: spin 8s linear infinite reverse; }
+      .blink { animation: blink 4s steps(1) infinite; }
+      /* Celebrate: three fast laps, a short rest, repeat. */
+      .spin-fast { animation: laps 5s cubic-bezier(.4,0,.2,1) infinite; }
+      .spin-fast .unspin { animation: unlaps 5s cubic-bezier(.4,0,.2,1) infinite; }
+      .pulse { animation: pulse 5s ease-out infinite; }
+      .sparks circle { animation: twinkle 5s ease-in-out infinite; }
+      .sparks circle:nth-child(2) { animation-delay: .2s; }
+      .sparks circle:nth-child(3) { animation-delay: .4s; }
+      .sparks circle:nth-child(4) { animation-delay: .6s; }
+      .sparks circle:nth-child(5) { animation-delay: .8s; }
+      .wiggle { animation: wiggle 1.4s ease-in-out infinite alternate; }
     }
-    @keyframes spin{to{transform:rotate(360deg)}}
-    @keyframes blink{0%,92%{opacity:1}93%,97%{opacity:0}98%,100%{opacity:1}}
-    @keyframes pulse{0%{opacity:.9;transform:scale(1)}100%{opacity:0;transform:scale(1.6)}}
-    @keyframes wiggle{from{transform:rotate(-6deg)}to{transform:rotate(6deg)}}
+    @media (prefers-reduced-motion: reduce) {
+      .sparks circle { opacity: 1; }
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes laps { 0% { transform: rotate(0deg); } 72% { transform: rotate(1080deg); } 100% { transform: rotate(1080deg); } }
+    @keyframes unlaps { 0% { transform: rotate(0deg); } 72% { transform: rotate(-1080deg); } 100% { transform: rotate(-1080deg); } }
+    @keyframes blink { 0%, 92% { opacity: 1; } 93%, 97% { opacity: 0; } 98%, 100% { opacity: 1; } }
+    @keyframes pulse { 0%, 100% { opacity: 0; transform: scale(1); } 5% { opacity: .9; transform: scale(1); } 30% { opacity: 0; transform: scale(1.6); } }
+    @keyframes twinkle { 0%, 100% { opacity: 0; } 15%, 60% { opacity: 1; } 75% { opacity: 0; } }
+    @keyframes wiggle { from { transform: rotate(-6deg); } to { transform: rotate(6deg); } }
   </style>
 
-  <rect width="900" height="300" fill="#0f1115"/>
+  <rect width="900" height="300" rx="18" fill="#1b1d2a"/>
 
-  <!-- ===== State 1: Idle (orbiting) ===== -->
+  <!-- ===== Idle: slow orbit, blinks ===== -->
   <g>
     <text x="150" y="36" text-anchor="middle" class="title">IDLE</text>
-    <!-- core -->
-    <circle cx="150" cy="140" r="26" fill="#14261b" stroke="#4ade80" stroke-width="2"/>
-    <circle cx="150" cy="140" r="8" fill="#4ade80"/>
-    <!-- orbit ring -->
-    <circle cx="150" cy="140" r="64" fill="none" stroke="#262b36" stroke-width="2" stroke-dasharray="4 6"/>
-    <!-- satellite -->
+    <circle cx="150" cy="140" r="26" fill="rgba(242,179,107,.14)" stroke="#f2b36b" stroke-width="2"/>
+    <circle cx="150" cy="140" r="8" fill="#f2b36b"/>
+    <circle cx="150" cy="140" r="64" fill="none" stroke="#3a3e55" stroke-width="2" stroke-dasharray="4 6"/>
     <g class="spin">
-      <g class="unspin" transform="translate(150,76)">
-        <!-- antenna -->
-        <line x1="0" y1="-14" x2="0" y2="-22" stroke="#4ade80" stroke-width="2" stroke-linecap="round"/>
-        <circle cx="0" cy="-24" r="2.5" fill="#4ade80"/>
-        <!-- body -->
-        <rect x="-14" y="-14" width="28" height="28" rx="9" fill="#e8eaf0"/>
-        <!-- eyes -->
-        <g class="blink">
-          <circle cx="-5" cy="-1" r="2.6" fill="#0f1115"/>
-          <circle cx="5" cy="-1" r="2.6" fill="#0f1115"/>
+      <g transform="translate(150 76)">
+        <g class="unspin">
+          <line x1="0" y1="-14" x2="0" y2="-22" stroke="#8fb8e8" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="0" cy="-24" r="2.5" fill="#8fb8e8"/>
+          <rect x="-14" y="-14" width="28" height="28" rx="9" fill="#f3effa"/>
+          <g class="blink">
+            <circle cx="-5" cy="-1" r="2.6" fill="#23213a"/>
+            <circle cx="5" cy="-1" r="2.6" fill="#23213a"/>
+          </g>
+          <path d="M-5 6 Q0 9 5 6" stroke="#23213a" stroke-width="2" fill="none" stroke-linecap="round"/>
         </g>
-        <!-- mouth -->
-        <path d="M-5 6 Q0 9 5 6" stroke="#0f1115" stroke-width="2" fill="none" stroke-linecap="round"/>
       </g>
     </g>
     <text x="150" y="250" text-anchor="middle" class="label">Orbiting the core. Nothing urgent.</text>
   </g>
 
-  <!-- ===== State 2: Celebrate (task done) ===== -->
+  <!-- ===== Celebrate: fast laps and sparks ===== -->
   <g>
     <text x="450" y="36" text-anchor="middle" class="title">CELEBRATE</text>
-    <circle cx="450" cy="140" r="26" fill="#14261b" stroke="#4ade80" stroke-width="2"/>
-    <circle cx="450" cy="140" r="8" fill="#4ade80"/>
-    <circle class="pulse" cx="450" cy="140" r="26" fill="none" stroke="#4ade80" stroke-width="2"/>
-    <circle cx="450" cy="140" r="64" fill="none" stroke="#262b36" stroke-width="2" stroke-dasharray="4 6"/>
-    <!-- sparks -->
-    <g fill="#fbbf24">
+    <circle cx="450" cy="140" r="26" fill="rgba(242,179,107,.14)" stroke="#f2b36b" stroke-width="2"/>
+    <circle cx="450" cy="140" r="8" fill="#f2b36b"/>
+    <circle class="pulse" cx="450" cy="140" r="26" fill="none" stroke="#f2b36b" stroke-width="2"/>
+    <circle cx="450" cy="140" r="64" fill="none" stroke="#3a3e55" stroke-width="2" stroke-dasharray="4 6"/>
+    <g class="sparks" fill="#f2d27b">
       <circle cx="392" cy="96" r="3"/>
       <circle cx="512" cy="88" r="2.5"/>
       <circle cx="520" cy="180" r="3"/>
@@ -63,45 +79,42 @@
       <circle cx="450" cy="58" r="2.5"/>
     </g>
     <g class="spin-fast">
-      <g class="unspin-fast" transform="translate(450,76)">
-        <line x1="0" y1="-14" x2="0" y2="-22" stroke="#4ade80" stroke-width="2" stroke-linecap="round"/>
-        <circle cx="0" cy="-24" r="2.5" fill="#4ade80"/>
-        <rect x="-14" y="-14" width="28" height="28" rx="9" fill="#e8eaf0"/>
-        <!-- happy eyes -->
-        <path d="M-8 -1 Q-5 -5 -2 -1" stroke="#0f1115" stroke-width="2" fill="none" stroke-linecap="round"/>
-        <path d="M2 -1 Q5 -5 8 -1" stroke="#0f1115" stroke-width="2" fill="none" stroke-linecap="round"/>
-        <path d="M-6 5 Q0 11 6 5" stroke="#0f1115" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <g transform="translate(450 76)">
+        <g class="unspin">
+          <line x1="0" y1="-14" x2="0" y2="-22" stroke="#8fb8e8" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="0" cy="-24" r="2.5" fill="#8fb8e8"/>
+          <rect x="-14" y="-14" width="28" height="28" rx="9" fill="#f3effa"/>
+          <path d="M-8 -1 Q-5 -5 -2 -1" stroke="#23213a" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <path d="M2 -1 Q5 -5 8 -1" stroke="#23213a" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <path d="M-6 5 Q0 11 6 5" stroke="#23213a" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </g>
       </g>
     </g>
-    <text x="450" y="250" text-anchor="middle" class="label">Task done. Fast lap around the core.</text>
+    <text x="450" y="250" text-anchor="middle" class="label">Task done. Fast laps around the core.</text>
   </g>
 
-  <!-- ===== State 3: Alert (mandatory open) ===== -->
+  <!-- ===== Alert: parked at the top, wiggles, badge ===== -->
   <g>
     <text x="750" y="36" text-anchor="middle" class="title">ALERT</text>
-    <circle cx="750" cy="140" r="26" fill="#2a2a14" stroke="#fbbf24" stroke-width="2"/>
-    <circle cx="750" cy="140" r="8" fill="#fbbf24"/>
-    <circle cx="750" cy="140" r="64" fill="none" stroke="#262b36" stroke-width="2" stroke-dasharray="4 6"/>
-    <!-- satellite parked at top, wiggling -->
+    <circle cx="750" cy="140" r="26" fill="rgba(242,179,107,.14)" stroke="#f2b36b" stroke-width="2"/>
+    <circle cx="750" cy="140" r="8" fill="#f2b36b"/>
+    <circle cx="750" cy="140" r="64" fill="none" stroke="#3a3e55" stroke-width="2" stroke-dasharray="4 6"/>
     <g class="wiggle">
-      <g transform="translate(750,76)">
-        <line x1="0" y1="-14" x2="0" y2="-22" stroke="#fbbf24" stroke-width="2" stroke-linecap="round"/>
-        <circle cx="0" cy="-24" r="2.5" fill="#fbbf24"/>
-        <rect x="-14" y="-14" width="28" height="28" rx="9" fill="#e8eaf0"/>
-        <!-- wide eyes -->
-        <circle cx="-5" cy="-1" r="3.4" fill="#0f1115"/>
-        <circle cx="5" cy="-1" r="3.4" fill="#0f1115"/>
-        <circle cx="-4" cy="-2" r="1" fill="#e8eaf0"/>
-        <circle cx="6" cy="-2" r="1" fill="#e8eaf0"/>
-        <!-- small o mouth -->
-        <circle cx="0" cy="7" r="2.2" fill="none" stroke="#0f1115" stroke-width="2"/>
+      <g transform="translate(750 76)">
+        <line x1="0" y1="-14" x2="0" y2="-22" stroke="#f2b36b" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="0" cy="-24" r="2.5" fill="#f2b36b"/>
+        <rect x="-14" y="-14" width="28" height="28" rx="9" fill="#f3effa"/>
+        <circle cx="-5" cy="-1" r="3.4" fill="#23213a"/>
+        <circle cx="5" cy="-1" r="3.4" fill="#23213a"/>
+        <circle cx="-4" cy="-2" r="1" fill="#f3effa"/>
+        <circle cx="6" cy="-2" r="1" fill="#f3effa"/>
+        <circle cx="0" cy="7" r="2.2" fill="none" stroke="#23213a" stroke-width="2"/>
       </g>
     </g>
-    <!-- exclamation badge -->
-    <g transform="translate(792,98)">
-      <circle r="9" fill="#fbbf24"/>
-      <rect x="-1.2" y="-5" width="2.4" height="6" rx="1" fill="#0f1115"/>
-      <circle cy="4" r="1.3" fill="#0f1115"/>
+    <g transform="translate(792 98)">
+      <circle r="9" fill="#f2b36b"/>
+      <rect x="-1.2" y="-5" width="2.4" height="6" rx="1" fill="#2a1a08"/>
+      <circle cy="4" r="1.3" fill="#2a1a08"/>
     </g>
     <text x="750" y="250" text-anchor="middle" class="label">Mandatory item open. Orbit is waiting.</text>
   </g>
