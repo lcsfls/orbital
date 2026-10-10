@@ -2,7 +2,8 @@
 # Orbital – Proxmox VE helper: creates a small unprivileged LXC and installs Orbital in it.
 #
 # Run on the Proxmox host as root:
-#   bash proxmox-lxc.sh
+#   bash proxmox-lxc.sh               create a new container and install Orbital
+#   bash proxmox-lxc.sh --resume 119  finish or repeat the installation in container 119
 #
 # Lightweight on purpose: no Docker inside the container. Node.js 22 (official binary,
 # checksum verified) runs Orbital as a systemd service. Data lives in /var/lib/orbital.
@@ -111,7 +112,18 @@ case "$HOST_ARCH" in x86_64) HOST_ARCH=amd64 ;; aarch64) HOST_ARCH=arm64 ;; esac
 case "$HOST_ARCH" in amd64 | arm64) ;; *) die "Unsupported host architecture: $HOST_ARCH" ;; esac
 info "Host architecture: $HOST_ARCH"
 
+# ---------- resume: install into an existing container ----------
+RESUME=0
+if [ "${1:-}" = "--resume" ]; then
+  RESUME=1
+  CTID=${2:-}
+  [[ "$CTID" =~ ^[0-9]+$ ]] || die "Usage: bash proxmox-lxc.sh --resume <container id>"
+  pct status "$CTID" >/dev/null 2>&1 || die "Container $CTID does not exist."
+  pct status "$CTID" | grep -q running || pct start "$CTID" || die "Container $CTID does not start. Details: pct start $CTID --debug"
+fi
+
 # ---------- questions ----------
+if [ "$RESUME" = 0 ]; then
 NEXT_ID=$(pvesh get /cluster/nextid 2>/dev/null || echo 200)
 CTID=${CTID:-$(ask "Container ID" "ID for the new container" "$NEXT_ID")}
 [[ "$CTID" =~ ^[0-9]+$ ]] || die "Container ID must be a number."
@@ -147,6 +159,8 @@ if [ "$IP" != "dhcp" ]; then
   NET="${NET},gw=${GATEWAY}"
 fi
 
+fi # end of questions for a new container
+
 PORT=${PORT:-$(ask "Port" "Port for the web interface" "8080")}
 HOST_TZ=$(cat /etc/timezone 2>/dev/null || timedatectl show -p Timezone --value 2>/dev/null || echo UTC)
 TZ_CT=${TZ_CT:-$HOST_TZ}
@@ -159,6 +173,7 @@ if [ -z "${SETUP_TOKEN+x}" ]; then
   fi
 fi
 
+if [ "$RESUME" = 0 ]; then
 # ---------- template ----------
 info "Looking for the newest Debian standard template"
 pveam update >/dev/null 2>&1 || info "Could not refresh the template list, using the cached one."
@@ -187,7 +202,7 @@ pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}" \
   --hostname "$HOSTNAME_CT" \
   --cores "$CORES" \
   --memory "$MEMORY_MB" \
-  --swap 256 \
+  --swap 512 \
   --rootfs "${STORAGE}:${DISK_GB}" \
   --net0 "$NET" \
   --unprivileged 1 \
@@ -207,6 +222,8 @@ Remove it again? (Nothing else was changed.)"; then
   die "Stopped. Nothing was installed."
 fi
 
+fi # end of creating a new container
+
 info "Waiting for the network"
 for _ in $(seq 1 30); do
   if pct exec "$CTID" -- getent hosts deb.debian.org >/dev/null 2>&1; then break; fi
@@ -218,12 +235,20 @@ pct exec "$CTID" -- getent hosts deb.debian.org >/dev/null 2>&1 || die "The cont
 INSTALL=$(mktemp)
 cat >"$INSTALL" <<EOF
 #!/usr/bin/env bash
+# Safe to run again: every step checks what is already there.
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 LC_ALL=C.UTF-8
+# Many home networks hand out IPv6 addresses without a working route; prefer IPv4 for downloads.
+export NODE_OPTIONS=--dns-result-order=ipv4first
+# pct exec does not always include /usr/local/bin, where Node.js goes.
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+exec > >(tee -a /var/log/orbital-install.log) 2>&1
+echo "== Orbital install \$(date -Is)"
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends ca-certificates curl git xz-utils >/dev/null
 
 # Node.js ${NODE_MAJOR} (official binary, checksum verified).
+if ! /usr/local/bin/node -v 2>/dev/null | grep -q '^v${NODE_MAJOR}\.'; then
 ARCH=\$(dpkg --print-architecture)
 case "\$ARCH" in amd64) NARCH=x64 ;; arm64) NARCH=arm64 ;; *) echo "Unsupported architecture \$ARCH"; exit 1 ;; esac
 BASE=https://nodejs.org/dist/latest-v${NODE_MAJOR}.x
@@ -232,17 +257,27 @@ curl -fsSL "\$BASE/\$FILE" -o "/tmp/\$FILE"
 ( cd /tmp && curl -fsSL "\$BASE/SHASUMS256.txt" | grep " \$FILE\\\$" | sha256sum -c - )
 tar -xJf "/tmp/\$FILE" -C /usr/local --strip-components=1 --exclude CHANGELOG.md --exclude README.md --exclude LICENSE
 rm -f "/tmp/\$FILE"
+fi
+/usr/local/bin/node -v >/dev/null 2>&1 || { echo "Node.js could not be installed to /usr/local/bin."; exit 1; }
+echo "Node \$(/usr/local/bin/node -v), npm \$(/usr/local/bin/npm -v)"
 
 id orbital >/dev/null 2>&1 || useradd --system --home /var/lib/orbital --shell /usr/sbin/nologin orbital
 install -d -o orbital -g orbital -m 750 /var/lib/orbital
 install -d -m 755 /etc/orbital
 
-git clone --depth 1 --branch "${BRANCH}" "${REPO}" /opt/orbital
+if [ -d /opt/orbital/.git ]; then
+  git -C /opt/orbital fetch --depth 1 origin "${BRANCH}"
+  git -C /opt/orbital reset --hard FETCH_HEAD
+else
+  rm -rf /opt/orbital
+  git clone --depth 1 --branch "${BRANCH}" "${REPO}" /opt/orbital
+fi
 cd /opt/orbital
-if ! npm ci --omit=dev --no-audit --no-fund; then
+if ! /usr/local/bin/npm ci --omit=dev --no-audit --no-fund --fetch-retries=4; then
   # Only if no prebuilt better-sqlite3 binary fits: build tools, then retry.
+  echo "npm ci failed, installing build tools and trying again"
   apt-get install -y -qq --no-install-recommends build-essential python3 >/dev/null
-  npm ci --omit=dev --no-audit --no-fund
+  /usr/local/bin/npm ci --omit=dev --no-audit --no-fund --fetch-retries=4
 fi
 chown -R root:root /opt/orbital
 
@@ -290,10 +325,11 @@ cat >/usr/local/bin/orbital-update <<'UPD'
 #!/usr/bin/env bash
 # Updates Orbital to the newest version of its branch. Data in /var/lib/orbital is kept.
 set -euo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin NODE_OPTIONS=--dns-result-order=ipv4first
 cd /opt/orbital
 git fetch --depth 1 origin
 git reset --hard FETCH_HEAD
-npm ci --omit=dev --no-audit --no-fund
+/usr/local/bin/npm ci --omit=dev --no-audit --no-fund
 systemctl restart orbital
 echo "Orbital updated to \$(git rev-parse --short HEAD)."
 UPD
@@ -312,7 +348,15 @@ EOF
 info "Installing Orbital inside the container (this takes a minute)"
 pct push "$CTID" "$INSTALL" /root/orbital-install.sh --perms 700
 rm -f "$INSTALL"
-pct exec "$CTID" -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 bash /root/orbital-install.sh
+if ! pct exec "$CTID" -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 bash /root/orbital-install.sh; then
+  echo
+  echo "The installation inside container $CTID stopped. Last lines of the log:"
+  pct exec "$CTID" -- tail -n 25 /var/log/orbital-install.log 2>/dev/null || true
+  echo
+  echo "Full log:  pct exec $CTID -- cat /var/log/orbital-install.log"
+  echo "Try again: pct exec $CTID -- bash /root/orbital-install.sh   (safe to repeat)"
+  die "Installation not finished. The container was left in place."
+fi
 pct exec "$CTID" -- rm -f /root/orbital-install.sh
 
 ADDR=$(pct exec "$CTID" -- hostname -I 2>/dev/null | awk '{ print $1 }')
