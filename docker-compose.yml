@@ -1,0 +1,82 @@
+services:
+  orbital:
+    build: .
+    image: orbital:1.0.0
+    container_name: orbital
+    restart: unless-stopped
+    # Linux: run as your own user so ./data stays writable (see .env.example).
+    user: "${ORBITAL_UID_GID:-1000:1000}"
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      TZ: "${TZ:-UTC}"
+      DATA_DIR: /data
+      SETUP_TOKEN: "${SETUP_TOKEN:-}"
+      COOKIE_SECURE: "${COOKIE_SECURE:-auto}"
+      TRUST_PROXY: "${TRUST_PROXY:-}"
+      HOME_ENABLED: "${HOME_ENABLED:-true}"
+      AI_ENABLED: "${AI_ENABLED:-false}"
+      AI_BASE_URL: "${AI_BASE_URL:-http://host.docker.internal:11434/v1}"
+      AI_MODEL: "${AI_MODEL:-llama3.1:8b}"
+      AI_API_KEY: "${AI_API_KEY:-}"
+      AI_TIMEOUT_MS: "${AI_TIMEOUT_MS:-60000}"
+      AI_MAX_TOKENS: "${AI_MAX_TOKENS:-800}"
+    volumes:
+      - ./data:/data
+    # Lets the container reach Ollama / LM Studio on the host (needed on Linux, harmless elsewhere).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+    # ---- Optional homelab section (Traefik + Authelia forward auth) ----
+    # Orbital has its own accounts. Forward auth (Authelia) is an optional extra layer.
+    # 1. Remove the "ports" block above if Traefik is the only way in.
+    # 2. Set TRUST_PROXY=1 in .env so secure cookies work behind TLS termination.
+    # 3. Uncomment the labels and the network, adjust the host name.
+    #
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.http.routers.orbital.rule=Host(`orbital.home.example`)"
+    #   - "traefik.http.routers.orbital.entrypoints=websecure"
+    #   - "traefik.http.routers.orbital.tls=true"
+    #   - "traefik.http.routers.orbital.tls.certresolver=letsencrypt"
+    #   - "traefik.http.services.orbital.loadbalancer.server.port=8080"
+    #   # Optional forward auth via Authelia:
+    #   - "traefik.http.routers.orbital.middlewares=authelia@docker"
+    # networks:
+    #   - proxy
+
+  # ---- Optional local AI: Ollama in its own container ----
+  # Start with:   docker compose --profile ai up -d
+  # Get a model:  docker compose exec ollama ollama pull llama3.2:3b
+  # In .env set:  AI_ENABLED=true  AI_BASE_URL=http://ollama:11434/v1  AI_MODEL=llama3.2:3b
+  ollama:
+    image: ollama/ollama:0.34.3
+    container_name: orbital-ollama
+    profiles: ["ai"]
+    restart: unless-stopped
+    volumes:
+      - ./ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+    # NVIDIA GPU (needs the NVIDIA container toolkit). Uncomment to use it:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+# networks:
+#   proxy:
+#     external: true

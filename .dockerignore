@@ -1,0 +1,14 @@
+node_modules
+data
+tests
+docs
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+*.md
+!backend/prompts/*.md
+Dockerfile
+docker-compose*.yml
+ollama/
