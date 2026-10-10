@@ -16,6 +16,10 @@
 #   YES=1 skips the final confirmation.
 set -euo pipefail
 
+# Commands run inside the container must not inherit host locales the template does not have.
+export LANG=C.UTF-8 LC_ALL=C.UTF-8
+unset LANGUAGE
+
 REPO="${REPO:-https://github.com/lcsfls/orbital.git}"
 BRANCH="${BRANCH:-main}"
 NODE_MAJOR=22
@@ -215,7 +219,7 @@ INSTALL=$(mktemp)
 cat >"$INSTALL" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-export DEBIAN_FRONTEND=noninteractive
+export DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 LC_ALL=C.UTF-8
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends ca-certificates curl git xz-utils >/dev/null
 
@@ -308,7 +312,7 @@ EOF
 info "Installing Orbital inside the container (this takes a minute)"
 pct push "$CTID" "$INSTALL" /root/orbital-install.sh --perms 700
 rm -f "$INSTALL"
-pct exec "$CTID" -- bash /root/orbital-install.sh
+pct exec "$CTID" -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 bash /root/orbital-install.sh
 pct exec "$CTID" -- rm -f /root/orbital-install.sh
 
 ADDR=$(pct exec "$CTID" -- hostname -I 2>/dev/null | awk '{ print $1 }')
