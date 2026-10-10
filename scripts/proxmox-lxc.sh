@@ -387,8 +387,10 @@ UNIT
 ( cd /opt/orbital && printf '{"commit":"%s","date":"%s"}\n' "\$(git rev-parse HEAD)" "\$(git log -1 --format=%cI)" >/opt/orbital/.orbital-version )
 
 systemctl daemon-reload
-systemctl enable --now orbital >/dev/null
-systemctl enable --now orbital-update.path >/dev/null
+# restart, not just start: on --resume the old version is still running.
+systemctl enable orbital orbital-update.path >/dev/null 2>&1
+systemctl restart orbital
+systemctl restart orbital-update.path
 for i in \$(seq 1 20); do
   curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null 2>&1 && exit 0
   sleep 1

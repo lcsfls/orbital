@@ -249,7 +249,7 @@ dialog.modal { width: min(560px, calc(100vw - 32px)); border-radius: var(--radiu
 
 /* ---------- Scratch ---------- */
 #scratch {
-  display: block; width: 100%; height: calc(100vh - 230px); min-height: 320px; resize: none;
+  display: block; width: 100%; height: clamp(260px, 52vh, 560px); resize: vertical;
   padding: 26px 28px; border-radius: var(--radius-lg);
   background: var(--surface); border: 1.5px solid var(--line);
   font: 17px/1.7 var(--mono);

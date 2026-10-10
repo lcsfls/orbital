@@ -262,8 +262,9 @@
       api('GET', '/api/projects'),
       api('GET', '/api/stats'),
       api('GET', '/api/gamification'),
-      api('GET', '/api/week'),
-      api('GET', '/api/crew'),
+      // Optional extras must never break the app (for example while a server restarts on an update).
+      api('GET', '/api/week').catch(() => null),
+      api('GET', '/api/crew').catch(() => null),
     ]);
     Object.assign(S, { ideas, projects, stats, game, week, crew });
     renderStatus();
