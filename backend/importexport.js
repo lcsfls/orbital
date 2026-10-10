@@ -258,6 +258,7 @@ function importAll(ctx, data, mode = 'merge') {
           companion_name: typeof g.settings?.companion_name === 'string' && g.settings.companion_name.trim() ? g.settings.companion_name.trim().slice(0, 24) : 'Orbit',
           companion_color: COMPANION_COLORS.includes(g.settings?.companion_color) ? g.settings.companion_color : 'moon',
           onboarded: g.settings?.onboarded !== false,
+          crew: g.settings?.crew === true,
         }),
         u,
       );

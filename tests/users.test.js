@@ -167,6 +167,61 @@ test('admin user management', async (t) => {
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM ideas WHERE user_id = ?').get(u.id).n, 0);
 });
 
+test('update check and update request (admins only)', async (t) => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orbital-sys-'));
+  const appRoot = path.join(dir, 'app');
+  const dataDir = path.join(dir, 'data');
+  fs.mkdirSync(appRoot);
+  fs.mkdirSync(dataDir);
+  fs.writeFileSync(path.join(appRoot, '.orbital-version'), JSON.stringify({ commit: 'aaaa111', date: '2026-10-01T10:00:00Z' }));
+  const lxcEnv = path.join(dir, 'orbital.env');
+  const unit = path.join(dir, 'orbital-update.path');
+  const gh = async (url) => {
+    assert.match(url, /api\.github\.com\/repos\/lcsfls\/orbital\/commits\/main/);
+    return { ok: true, json: async () => ({ sha: 'bbbb2222cccc', html_url: 'https://github.com/x', commit: { message: 'New things\n\nbody', committer: { date: '2026-10-10T10:00:00Z' } } }) };
+  };
+  const s = await startServer({ dataDir, system: { appRoot, fetchImpl: gh, paths: { lxcEnv, lxcPathUnit: unit, dockerEnv: path.join(dir, 'nope') } } });
+  t.after(async () => {
+    await s.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  // Manual install: shows the command, cannot update itself.
+  let r = await s.get('/api/system/update');
+  assert.equal(r.status, 200);
+  assert.equal(r.body.install, 'manual');
+  assert.equal(r.body.current.commit, 'aaaa111');
+  assert.equal(r.body.latest.commit, 'bbbb2222cccc');
+  assert.equal(r.body.latest.message, 'New things');
+  assert.equal(r.body.update_available, true);
+  assert.equal(r.body.can_self_update, false);
+  assert.equal((await s.post('/api/system/update')).status, 409);
+
+  // LXC with the update unit: the request only drops a file into the data folder.
+  fs.writeFileSync(lxcEnv, 'PORT=8080');
+  fs.writeFileSync(unit, '[Path]');
+  r = await s.get('/api/system/update');
+  assert.equal(r.body.install, 'lxc');
+  assert.equal(r.body.can_self_update, true);
+  assert.equal((await s.post('/api/system/update')).status, 202);
+  assert.ok(fs.existsSync(path.join(dataDir, '.update-requested')));
+  fs.writeFileSync(path.join(dataDir, '.update-status'), JSON.stringify({ state: 'failed', message: 'x' }));
+  const st = await s.get('/api/system/status');
+  assert.equal(st.body.status.state, 'failed');
+  assert.equal(st.body.current.commit, 'aaaa111');
+
+  // Members cannot check or update.
+  await s.post('/api/users', { username: 'finn', password: 'finn-password' });
+  const finn = s.client();
+  await finn.login('finn', 'finn-password');
+  assert.equal((await finn.get('/api/system/update')).status, 403);
+  assert.equal((await finn.post('/api/system/update')).status, 403);
+  assert.equal((await s.get('/healthz')).body.commit, 'aaaa111');
+});
+
 test('AI settings can only be changed by admins', async (t) => {
   const s = await startServer({ aiEnabled: true, aiFetch: async () => ({ ok: true, json: async () => ({}) }) });
   t.after(s.close);

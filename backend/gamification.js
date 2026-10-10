@@ -45,7 +45,7 @@ const COMPANION_COLORS = ['moon', 'sky', 'mint', 'peach', 'rose', 'lilac', 'sand
 
 const praise = require('./praise');
 
-const DEFAULT_SETTINGS = { effects: true, sound: false, companion_name: 'Orbit', companion_color: 'moon', onboarded: false };
+const DEFAULT_SETTINGS = { effects: true, sound: false, companion_name: 'Orbit', companion_color: 'moon', onboarded: false, crew: false };
 
 // Level n starts at 50 * n * (n - 1) XP: 0, 100, 300, 600, 1000, ...
 function levelFloor(level) {

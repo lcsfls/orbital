@@ -22,6 +22,7 @@ const app = createApp({
   cookieSecure: process.env.COOKIE_SECURE || 'auto',
   trustProxy: process.env.TRUST_PROXY ? (Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY) : false,
   setupToken: process.env.SETUP_TOKEN || '',
+  dataDir: DATA_DIR,
 });
 
 const server = app.listen(PORT, HOST, () => {

@@ -11,6 +11,8 @@ const { createInbox, parseLines } = require('./inbox');
 const { createAi } = require('./ai');
 const { schemaVersion } = require('./db');
 const { createAuth, currentUserId } = require('./auth');
+const { createSystem } = require('./system');
+const { createWeek } = require('./week');
 const { HttpError, validate } = require('./validate');
 const pkg = require('../package.json');
 
@@ -26,6 +28,8 @@ function createApp({
   env = process.env,
   cookieSecure = 'auto',
   setupToken = '',
+  dataDir = null,
+  system: systemOpts = {},
   trustProxy = false,
   publicDir = path.join(__dirname, '..', 'public'),
 }) {
@@ -34,6 +38,7 @@ function createApp({
   const game = createGamification(db, clock, uid);
   const home = createHome(db, clock, game, uid);
 
+  const system = createSystem({ dataDir, env, ...systemOpts });
   const ctx = {
     db,
     clock,
@@ -46,6 +51,8 @@ function createApp({
     nowIso: () => clock.now().toISOString(),
     gameState: () => game.state(items.openAlerts(db, uid()).length),
   };
+
+  ctx.week = createWeek(db, game);
 
   ctx.loadProject = (id) => {
     const row = db.prepare('SELECT * FROM projects WHERE id = ? AND user_id = ?').get(id, uid());
@@ -100,7 +107,7 @@ function createApp({
   app.get('/healthz', (req, res) => {
     try {
       db.prepare('SELECT 1').get();
-      res.json({ status: 'ok', version: pkg.version, schema_version: schemaVersion(db) });
+      res.json({ status: 'ok', version: pkg.version, commit: system.current().commit, schema_version: schemaVersion(db) });
     } catch (err) {
       res.status(503).json({ status: 'error', error: err.message });
     }
@@ -169,6 +176,12 @@ function createApp({
   api.use('/tasks', require('./routes/tasks')(ctx));
 
   api.get('/stats', (req, res) => res.json(stats(ctx)));
+  api.use(require('./routes/crew')(ctx));
+
+  // Updates (admins). Checking only happens when an admin presses the button.
+  api.get('/system/update', auth.requireAdmin, async (req, res) => res.json(await system.check()));
+  api.post('/system/update', auth.requireAdmin, (req, res) => res.status(202).json(system.request()));
+  api.get('/system/status', auth.requireAdmin, (req, res) => res.json({ current: system.current(), status: system.status() }));
 
   api.get('/gamification', (req, res) => res.json(ctx.gameState()));
   api.patch('/gamification', (req, res) => {
@@ -179,6 +192,7 @@ function createApp({
       companion_name: { type: 'string', min: 1, max: 24 },
       companion_color: { type: 'enum', values: COMPANION_COLORS },
       onboarded: { type: 'bool' },
+      crew: { type: 'bool' },
     });
     game.updateSettings(s);
     res.json(ctx.gameState());

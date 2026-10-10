@@ -146,6 +146,22 @@ const MIGRATIONS = [
       );
     `,
   },
+  {
+    version: 2,
+    name: 'crew cheers',
+    sql: `
+      CREATE TABLE cheers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        from_user INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        to_user INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        day TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        seen INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX cheers_to ON cheers(to_user, seen);
+      CREATE UNIQUE INDEX cheers_once_a_day ON cheers(from_user, to_user, day);
+    `,
+  },
 ];
 
 // Creates the per-user singleton rows. Safe to call more than once.

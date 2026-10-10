@@ -16,6 +16,7 @@ Orbit, the little satellite in the sidebar, shows how things stand: it orbits qu
 - **Projects:** tasks with big tick boxes and a progress bar. "Today" shows exactly one next step.
 - **Points and streaks** reward finishing, parking and dropping on purpose. Missing a day simply starts a new streak.
 - **Multi-user:** local accounts. Every person has a private orbit with their own ideas, projects, points, scratchpad and home.
+- **This week and the crew:** Today shows your week compared only with your own last week, never with others. Optionally you can join the crew on your Orbital: members are listed alphabetically (no ranking) with how many things they finished, everyone can send one heart per person and day, and the crew works towards one shared weekly goal. Only numbers are shared, never task titles.
 - **Local AI (optional):** suggestions for ideas, next small steps for projects, sorting help, a weekly digest and chatting with Orbit, all from your own Ollama, LM Studio, llama.cpp or vLLM server. It only suggests things, and it only runs when you press a button.
 - **Your house:** a small 3D house (three.js, served locally) with a living room, a workshop and a garden. You furnish it with the points you earned. Tap Orbit or your level to visit. It is purely cosmetic.
 
@@ -141,6 +142,8 @@ Your data stays where it is. Updates never touch `./data` (Docker) or `/var/lib/
 git pull
 docker compose up -d --build
 ```
+
+**From the app (Proxmox LXC):** admins find **Settings → Updates → Check for updates**. In a container created with the newest Proxmox script there is an **Update now** button: the app only drops a request file into its data folder, and a separate root service in the container runs the update and restarts Orbital. Docker and manual installs get the matching command with a copy button. Orbital only contacts GitHub when you press the button (`UPDATE_CHECK=false` turns the check off).
 
 **Proxmox LXC (created with `scripts/proxmox-lxc.sh`).** On the Proxmox host:
 
@@ -298,6 +301,7 @@ The smoke test builds the image, starts a container, calls `/healthz`, creates d
 - [ ] Settings → Comfort: turn celebrations off, finish a task, nothing moves.
 - [ ] Turn on "reduce motion" in the OS: Orbit stays still and shows only the badge.
 - [ ] Settings → People: add a person, sign in as them in a private window, check their orbit is empty.
+- [ ] Both join the crew (Settings → Crew). Today shows "Crew: n of goal". Send a heart, and the other person's companion says "<name> cheered for you." on their next visit.
 - [ ] Settings → Backup: download, then load the file with "Replace" in a second account.
 - [ ] Load an old `planer_*.json`.
 - [ ] `docker compose restart`, reload the page: everything is still there and you are still signed in.

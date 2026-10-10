@@ -17,7 +17,7 @@ test('health check and config', async (t) => {
   const h = await s.get('/healthz');
   assert.equal(h.status, 200);
   assert.equal(h.body.status, 'ok');
-  assert.equal(h.body.schema_version, 1);
+  assert.equal(h.body.schema_version, 2);
   const c = await s.get('/api/config');
   assert.equal(c.body.name, 'Orbital');
   assert.equal(c.body.home_enabled, false);
@@ -255,7 +255,7 @@ test('gamification settings', async (t) => {
   const s = await startServer();
   t.after(s.close);
   const g = await s.get('/api/gamification');
-  assert.deepEqual(g.body.settings, { effects: true, sound: false, companion_name: 'Orbit', companion_color: 'moon', onboarded: false });
+  assert.deepEqual(g.body.settings, { effects: true, sound: false, companion_name: 'Orbit', companion_color: 'moon', onboarded: false, crew: false });
   const p = await s.patch('/api/gamification', { settings: { effects: false } });
   assert.equal(p.body.settings.effects, false);
   assert.equal(p.body.settings.sound, false);
@@ -618,7 +618,7 @@ test('data survives reopening the database file', () => {
   db.close();
   db = openDatabase(file);
   assert.equal(db.prepare('SELECT title FROM ideas').get().title, 'persist');
-  assert.equal(db.prepare('SELECT MAX(version) AS v FROM migrations').get().v, 1);
+  assert.equal(db.prepare('SELECT MAX(version) AS v FROM migrations').get().v, 2);
   db.close();
   fs.rmSync(dir, { recursive: true, force: true });
 });

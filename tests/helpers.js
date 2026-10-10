@@ -70,6 +70,8 @@ async function startServer(opts = {}) {
     aiFetch: opts.aiFetch,
     env: opts.env || {},
     setupToken: opts.setupToken || '',
+    dataDir: opts.dataDir || null,
+    system: opts.system || {},
   });
   const server = await new Promise((resolve) => {
     const s = app.listen(0, '127.0.0.1', () => resolve(s));

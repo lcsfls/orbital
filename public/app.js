@@ -257,14 +257,52 @@
   // ---------- Data ----------
   async function loadAll() {
     await api('GET', '/api/todo');
-    const [ideas, projects, stats, game] = await Promise.all([
+    const [ideas, projects, stats, game, week, crew] = await Promise.all([
       api('GET', '/api/ideas'),
       api('GET', '/api/projects'),
       api('GET', '/api/stats'),
       api('GET', '/api/gamification'),
+      api('GET', '/api/week'),
+      api('GET', '/api/crew'),
     ]);
-    Object.assign(S, { ideas, projects, stats, game });
+    Object.assign(S, { ideas, projects, stats, game, week, crew });
     renderStatus();
+    showCheers();
+  }
+
+  // Hearts from the crew: shown once, by your companion, then marked as seen.
+  let cheersShown = false;
+  function showCheers() {
+    const list = S.crew?.cheers_unseen || [];
+    if (!list.length || cheersShown) return;
+    cheersShown = true;
+    const names = [...new Set(list.map((c) => c.from_name))];
+    const text = names.length === 1 ? `${names[0]} cheered for you.` : `${names.slice(0, -1).join(', ')} and ${names.at(-1)} cheered for you.`;
+    setTimeout(() => {
+      toast(text);
+      celebrate(text);
+      confetti($('#orbitBtn'));
+    }, 600);
+    api('POST', '/api/crew/cheers/seen').then(() => (cheersShown = false), () => {});
+    S.crew.cheers_unseen = [];
+  }
+
+  // A crew goal reached this week gets one small celebration per browser.
+  function crewGoalReached() {
+    const c = S.crew;
+    if (!c?.opted_in || c.total < c.goal) return false;
+    const key = `orbital.crewgoal.${c.start}`;
+    try {
+      if (localStorage.getItem(key)) return true;
+      localStorage.setItem(key, '1');
+    } catch {
+      return true;
+    }
+    setTimeout(() => {
+      toast('The crew reached the goal for this week. Together.');
+      celebrate('The crew made it.');
+    }, 900);
+    return true;
   }
   async function refresh() {
     await loadAll();
@@ -526,7 +564,7 @@
     const pct = activeTasks.length ? Math.round((100 * doneCount) / activeTasks.length) : 0;
     const progressLine = (extra = '') => `<div class="progress" role="progressbar" aria-label="Steps done" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" style="margin-top:20px"><span style="width:${pct}%"></span></div>
       <div class="where">${pct}% done (${doneCount} of ${plural(activeTasks.length, 'step')})${extra}</div>`;
-    const ready = S.projects.filter((p) => p.open && p.tasks.length && p.tasks_done === p.tasks.length);
+    const ready = realProjects().filter((p) => p.open && p.tasks.length && p.tasks_done === p.tasks.length);
     let focus;
     if (nt) {
       const left = activeTasks.length - doneCount;
@@ -581,6 +619,8 @@
       <p class="lead">${esc(S.game.alert_count ? MSG.alert : S.game.streak_message || MSG.idle)}</p>
       ${needs}
       <section>${focus}</section>
+      ${weekCard()}
+      ${crewCard()}
       ${glance}
       ${total ? `<section><h2>Where your ideas sit</h2>
         <div class="quad">${cell('invent')}${cell('deploy')}${cell('offload')}${cell('manage')}</div>
@@ -600,6 +640,44 @@
       try { localStorage.setItem('orbital.glance', d.open ? '1' : '0'); } catch { /* storage unavailable */ }
     });
   };
+
+  // ---------- This week and the crew (Today) ----------
+  const DAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  function weekCard() {
+    const w = S.week;
+    if (!w) return '';
+    const dots = w.days
+      .map((d, i) => `<span class="wday${d.active ? ' on' : ''}${d.today ? ' today' : ''}${d.future ? ' future' : ''}" title="${DAY_NAMES[i]}${d.active ? ': active' : ''}" aria-label="${DAY_NAMES[i]}${d.active ? ', active' : ''}">${DAY_LETTERS[i]}</span>`)
+      .join('');
+    const bits = [plural(w.done, 'thing') + ' done', `${w.decided} decided`];
+    if (w.projects_completed) bits.push(plural(w.projects_completed, 'project') + ' finished');
+    return `<section><div class="panel week">
+      <div class="week-head"><h2 style="margin:0">This week</h2><div class="wdays" role="img" aria-label="Active days this week">${dots}</div></div>
+      <p style="margin:12px 0 2px"><strong>${esc(bits.join(', '))}</strong></p>
+      <p class="quiet" style="margin:0">${esc(w.message)}</p>
+    </div></section>`;
+  }
+
+  function crewCard() {
+    const c = S.crew;
+    if (!c?.opted_in) return '';
+    const pct = Math.min(100, Math.round((100 * c.total) / Math.max(1, c.goal)));
+    const reached = crewGoalReached();
+    const rows = c.members
+      .map((m) => `<div class="crew-row">
+        <span class="crew-dot" style="background:${(COMPANION_COLORS[m.companion_color] || COMPANION_COLORS.moon).hex}" aria-hidden="true"></span>
+        <div class="grow"><strong>${esc(m.name)}</strong>${m.me ? ' <span class="quiet">(you)</span>' : ''}<br>
+          <span class="quiet small">${plural(m.done, 'thing')} this week${m.streak ? `, ${plural(m.streak, 'day')} in a row` : ''}</span></div>
+        ${m.me ? '' : m.cheered_today ? '<span class="quiet small">Cheered today</span>' : `<button class="btn soft small" data-act="cheer" data-id="${m.id}">Send a heart</button>`}
+      </div>`)
+      .join('');
+    return `<section><details class="fold" id="crewFold"><summary>Crew: ${c.total} of ${c.goal} this week${reached ? ', goal reached' : ''}</summary><div>
+      <div class="progress" aria-hidden="true" style="margin:0 0 16px"><span style="width:${pct}%"></span></div>
+      <p class="quiet small" style="margin-top:-6px">${reached ? 'The crew made it this week. Everything from here is a bonus.' : 'Everyone counts towards one shared goal. No ranking, just together.'}</p>
+      ${rows || '<p class="quiet">Nobody else has joined yet.</p>'}
+    </div></details></section>`;
+  }
 
   // ---------- Ideas ----------
   // Calm relative date: "today", "3 days ago", "2 weeks ago", else a locale date.
@@ -1634,6 +1712,75 @@
     }
   }
 
+  // ---------- Updates (admins) ----------
+  const shortSha = (c) => (c ? c.slice(0, 7) : 'unknown');
+  const when = (iso) => (iso ? new Date(iso).toLocaleDateString() : '');
+  async function checkUpdates(btn) {
+    const out = $('#updateOut');
+    btn.disabled = true;
+    out.innerHTML = '<p class="quiet">Checking.</p>';
+    try {
+      const r = await api('GET', '/api/system/update');
+      const verdict = r.update_available === null
+        ? 'Orbital cannot tell which version is installed here.'
+        : r.update_available ? 'A new version is available.' : 'You are up to date.';
+      let action = '';
+      if (r.update_available !== false) {
+        action = r.can_self_update
+          ? '<div class="actions"><button class="btn" data-act="update-now">Update now</button></div>'
+          : `<p>To update, run this ${r.install === 'docker' ? 'in the Orbital folder' : r.install === 'lxc' ? 'on the Proxmox host' : 'in the Orbital folder'}:</p>
+             <div class="cmd"><code>${esc(r.command)}</code><button class="btn soft small" data-act="copy" data-text="${esc(r.command)}">Copy</button></div>
+             ${r.install === 'lxc' ? '<p class="quiet small">For a button here next time, run the newest Proxmox script once with --resume.</p>' : ''}`;
+      }
+      const last = r.status && r.status.state === 'failed' ? `<p class="error">Last update: ${esc(r.status.message)}</p>` : '';
+      out.innerHTML = `<dl class="facts" style="margin-top:16px">
+          <dt>Installed</dt><dd>${esc(shortSha(r.current.commit))} ${esc(when(r.current.date))}</dd>
+          <dt>Newest</dt><dd>${esc(shortSha(r.latest.commit))} ${esc(when(r.latest.date))}<br><span class="quiet small">${esc(r.latest.message)}</span></dd>
+        </dl><p><strong>${verdict}</strong></p>${last}${action}`;
+    } catch (err) {
+      out.innerHTML = `<p class="error">${esc(err.message)}</p>`;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function runUpdate(btn) {
+    if (!(await ask('Update Orbital now?', 'Orbital restarts for about a minute. Your data stays where it is. The page reloads by itself.', 'Update now'))) return;
+    btn.disabled = true;
+    const out = $('#updateOut');
+    try {
+      const before = (await api('GET', '/api/system/status')).current.commit;
+      await api('POST', '/api/system/update');
+      out.innerHTML = '<p><strong>Updating.</strong> This takes about a minute. Feel free to look away, the page reloads by itself.</p>';
+      const started = Date.now();
+      const poll = async () => {
+        if (Date.now() - started > 5 * 60000) {
+          out.innerHTML = '<p class="error">This takes longer than expected. Check the container: journalctl -u orbital-update</p>';
+          return;
+        }
+        try {
+          const st = await api('GET', '/api/system/status');
+          if (st.status?.state === 'failed') {
+            out.innerHTML = `<p class="error">${esc(st.status.message)}</p>`;
+            return;
+          }
+          if (st.status?.state === 'ok' && st.current.commit !== before) {
+            toast('Updated. Reloading.');
+            setTimeout(() => location.reload(), 1200);
+            return;
+          }
+        } catch {
+          /* the server restarts for a moment */
+        }
+        setTimeout(poll, 3000);
+      };
+      setTimeout(poll, 3000);
+    } catch (err) {
+      out.innerHTML = `<p class="error">${esc(err.message)}</p>`;
+      btn.disabled = false;
+    }
+  }
+
   // ---------- Settings ----------
   VIEWS.settings = () => {
     const g = S.game;
@@ -1658,6 +1805,12 @@
           .join('')}</div>
         <div class="actions"><button class="btn soft" type="submit">Save</button><button class="btn text" type="button" data-act="rerun-setup">Run the setup again</button></div></form>
       </div>
+      <div class="panel"><h2>Crew</h2>
+        <p>Share how many things you finished this week with the others on this Orbital, and cheer each other on. Nobody sees your tasks or ideas, only the number. No ranking.</p>
+        <label class="check"><input type="checkbox" id="setCrew" ${g.settings.crew ? 'checked' : ''}> Join the crew</label>
+        ${!g.settings.crew && S.crew?.member_count ? `<p class="quiet small">${plural(S.crew.member_count, 'person', 'people')} already joined.</p>` : ''}
+        ${admin ? `<div style="display:flex;gap:10px;align-items:flex-end;margin-top:14px"><label class="field" style="margin:0;flex:1"><span>Shared goal per week</span><input type="number" id="crewGoal" min="1" max="1000" value="${S.crew?.goal || 30}"></label><button class="btn soft" type="button" data-act="crew-goal">Save goal</button></div>` : ''}
+      </div>
       <div class="panel"><h2>Comfort</h2>
         <label class="check"><input type="checkbox" id="setEffects" ${g.settings.effects !== false ? 'checked' : ''}> Celebrations (${esc(cname())} moves, a little confetti)</label>
         <label class="check"><input type="checkbox" id="setSound" ${g.settings.sound ? 'checked' : ''}> A soft sound when something is done</label>
@@ -1671,6 +1824,10 @@
       </div>
       ${S.config.ai_enabled ? `<div class="panel" id="aiPanel"><h2>Local AI</h2><p class="quiet">Loading.</p></div>` : ''}
       ${admin ? '<div class="panel" id="peoplePanel"><h2>People</h2><p class="quiet">Loading.</p></div>' : ''}
+      ${admin ? `<div class="panel" id="updatePanel"><h2>Updates</h2>
+        <p class="quiet">Orbital only looks for a new version when you press the button.</p>
+        <div class="actions" style="margin-top:8px"><button class="btn soft" data-act="update-check">Check for updates</button></div>
+        <div id="updateOut"></div></div>` : ''}
     </div>`;
   };
 
@@ -1730,6 +1887,15 @@
       });
     }
     $('#importFile').addEventListener('change', importFile);
+    $('#setCrew').addEventListener('change', async (e) => {
+      try {
+        S.game = await api('PATCH', '/api/gamification', { settings: { crew: e.target.checked } });
+        S.crew = await api('GET', '/api/crew');
+        toast(e.target.checked ? 'You joined the crew. It shows up on Today.' : 'You left the crew. Your numbers are private again.');
+      } catch (err) {
+        fail(err);
+      }
+    });
     if (S.config.ai_enabled) renderAiPanel().catch(fail);
     if (S.user.role === 'admin') renderPeople().catch(fail);
   };
@@ -1886,6 +2052,34 @@
       case 'close': return closeSheet();
       case 'room': return openLivingRoom(btn.dataset.room || 'living');
       case 'rerun-setup': return showOnboarding();
+      case 'cheer': {
+        const r = await api('POST', '/api/crew/cheer', { user_id: id });
+        toast(r.message);
+        confetti(btn);
+        S.crew = await api('GET', '/api/crew');
+        render();
+        const f = $('#crewFold');
+        if (f) f.open = true;
+        return;
+      }
+      case 'crew-goal': {
+        const n = Number($('#crewGoal').value);
+        const r = await api('PATCH', '/api/crew/goal', { goal: n });
+        toast(`Crew goal set to ${r.goal} a week.`);
+        S.crew = await api('GET', '/api/crew');
+        return;
+      }
+      case 'update-check': return checkUpdates(btn);
+      case 'update-now': return runUpdate(btn);
+      case 'copy': {
+        try {
+          await navigator.clipboard.writeText(btn.dataset.text);
+          toast('Copied.');
+        } catch {
+          toast('Copying is blocked here. Select the command and copy it by hand.', { warn: true });
+        }
+        return;
+      }
       case 'open-idea': return openIdea(id);
       case 'open-project': S.openProject = id; closeSheet(); if (current !== 'projects') location.hash = 'projects'; else render(); return;
       case 'open-task':

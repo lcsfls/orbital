@@ -334,19 +334,61 @@ chmod 644 /etc/profile.d/orbital.sh
 cat >/usr/local/bin/orbital-update <<'UPD'
 #!/usr/bin/env bash
 # Updates Orbital to the newest version of its branch. Data in /var/lib/orbital is kept.
-set -euo pipefail
-export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin NODE_OPTIONS=--dns-result-order=ipv4first
-cd /opt/orbital
-git fetch --depth 1 origin
-git reset --hard FETCH_HEAD
-/usr/local/bin/npm ci --omit=dev --no-audit --no-fund
-systemctl restart orbital
-echo "Orbital updated to \$(git rev-parse --short HEAD)."
+# Runs by hand, or via orbital-update.path when an admin presses "Update now" in Settings.
+set -uo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin NODE_OPTIONS=--dns-result-order=ipv4first LANG=C.UTF-8
+STATUS=/var/lib/orbital/.update-status
+LOG=/var/log/orbital-update.log
+rm -f /var/lib/orbital/.update-requested
+status() {
+  printf '{"state":"%s","at":"%s","message":"%s"}\n' "\$1" "\$(date -Is)" "\$2" >"\$STATUS"
+  chown orbital:orbital "\$STATUS" 2>/dev/null || true
+}
+status running "Updating"
+echo "== Update \$(date -Is)" >>"\$LOG"
+if cd /opt/orbital \
+  && git fetch --depth 1 origin >>"\$LOG" 2>&1 \
+  && git reset --hard FETCH_HEAD >>"\$LOG" 2>&1 \
+  && /usr/local/bin/npm ci --omit=dev --no-audit --no-fund >>"\$LOG" 2>&1; then
+  printf '{"commit":"%s","date":"%s"}\n' "\$(git rev-parse HEAD)" "\$(git log -1 --format=%cI)" >/opt/orbital/.orbital-version
+  status ok "Updated to \$(git rev-parse --short HEAD)"
+  systemctl restart orbital
+  echo "Orbital updated to \$(git rev-parse --short HEAD)."
+else
+  status failed "The update stopped. Details: /var/log/orbital-update.log"
+  echo "The update stopped. Details: \$LOG"
+  exit 1
+fi
 UPD
 chmod 755 /usr/local/bin/orbital-update
 
+# "Update now" in Settings only drops a file into the data folder; this root unit does the rest.
+cat >/etc/systemd/system/orbital-update.service <<UNIT
+[Unit]
+Description=Update Orbital
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/orbital-update
+UNIT
+cat >/etc/systemd/system/orbital-update.path <<UNIT
+[Unit]
+Description=Watch for Orbital update requests
+
+[Path]
+PathExists=/var/lib/orbital/.update-requested
+Unit=orbital-update.service
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+# Remember which commit is installed, for the update check in Settings.
+( cd /opt/orbital && printf '{"commit":"%s","date":"%s"}\n' "\$(git rev-parse HEAD)" "\$(git log -1 --format=%cI)" >/opt/orbital/.orbital-version )
+
 systemctl daemon-reload
 systemctl enable --now orbital >/dev/null
+systemctl enable --now orbital-update.path >/dev/null
 for i in \$(seq 1 20); do
   curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null 2>&1 && exit 0
   sleep 1
