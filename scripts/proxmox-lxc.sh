@@ -101,6 +101,11 @@ free_gib() { storages_for "$1" | awk -F'|' -v s="$2" '$1 == s { print int($3) }'
 command -v pct >/dev/null 2>&1 && command -v pvesm >/dev/null 2>&1 && command -v pveam >/dev/null 2>&1 \
   || die "This does not look like a Proxmox VE host (pct, pvesm or pveam missing)."
 info "Proxmox VE $(pveversion | cut -d/ -f2)"
+# Containers share the host kernel, so the template must match the host architecture.
+HOST_ARCH=$(dpkg --print-architecture 2>/dev/null || uname -m)
+case "$HOST_ARCH" in x86_64) HOST_ARCH=amd64 ;; aarch64) HOST_ARCH=arm64 ;; esac
+case "$HOST_ARCH" in amd64 | arm64) ;; *) die "Unsupported host architecture: $HOST_ARCH" ;; esac
+info "Host architecture: $HOST_ARCH"
 
 # ---------- questions ----------
 NEXT_ID=$(pvesh get /cluster/nextid 2>/dev/null || echo 200)
@@ -153,13 +158,13 @@ fi
 # ---------- template ----------
 info "Looking for the newest Debian standard template"
 pveam update >/dev/null 2>&1 || info "Could not refresh the template list, using the cached one."
-TEMPLATE=$(pveam available --section system | awk '{ print $2 }' | grep -E '^debian-(13|12)-standard_' | sort -V | tail -1)
-[ -n "$TEMPLATE" ] || die "No Debian 12 or 13 standard template found in 'pveam available'."
+TEMPLATE=$(pveam available --section system | awk '{ print $2 }' | grep -E "^debian-(13|12)-standard_.*_${HOST_ARCH}\.tar\." | sort -V | tail -1)
+[ -n "$TEMPLATE" ] || die "No Debian 12 or 13 standard template for $HOST_ARCH found in 'pveam available'."
 
 # ---------- summary ----------
 SUMMARY="ID:        $CTID
 Hostname:  $HOSTNAME_CT
-Template:  $TEMPLATE ($TEMPLATE_STORAGE)
+Template:  $TEMPLATE ($TEMPLATE_STORAGE, $HOST_ARCH)
 Disk:      ${DISK_GB} GB on $STORAGE
 CPU / RAM: $CORES core(s), ${MEMORY_MB} MB
 Network:   $BRIDGE, $IP
@@ -186,7 +191,17 @@ pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}" \
   --onboot 1 \
   --tags orbital \
   --description "Orbital – calm idea and project tracker. Data: /var/lib/orbital. Update: orbital-update"
-pct start "$CTID"
+if ! pct start "$CTID"; then
+  echo
+  echo "Container $CTID was created but does not start."
+  echo "Details: pct start $CTID --debug"
+  if yesno "Start failed" "Container $CTID was created but does not start.
+
+Remove it again? (Nothing else was changed.)"; then
+    pct destroy "$CTID" --purge >/dev/null 2>&1 && info "Container $CTID removed."
+  fi
+  die "Stopped. Nothing was installed."
+fi
 
 info "Waiting for the network"
 for _ in $(seq 1 30); do
