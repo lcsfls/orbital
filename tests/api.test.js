@@ -254,10 +254,26 @@ test('gamification settings', async (t) => {
   const s = await startServer();
   t.after(s.close);
   const g = await s.get('/api/gamification');
-  assert.deepEqual(g.body.settings, { effects: true, sound: false });
+  assert.deepEqual(g.body.settings, { effects: true, sound: false, companion_name: 'Orbit', companion_color: 'moon', onboarded: false });
   const p = await s.patch('/api/gamification', { settings: { effects: false } });
-  assert.deepEqual(p.body.settings, { effects: false, sound: false });
+  assert.equal(p.body.settings.effects, false);
+  assert.equal(p.body.settings.sound, false);
   assert.equal((await s.patch('/api/gamification', { settings: { volume: 3 } })).status, 400);
+
+  // Onboarding: name and colour for the companion.
+  const named = await s.patch('/api/gamification', { settings: { companion_name: '  Mila ', companion_color: 'mint', onboarded: true } });
+  assert.equal(named.body.settings.companion_name, 'Mila');
+  assert.equal(named.body.settings.companion_color, 'mint');
+  assert.equal(named.body.settings.onboarded, true);
+  assert.equal((await s.patch('/api/gamification', { settings: { companion_color: 'neon' } })).status, 400);
+  assert.equal((await s.patch('/api/gamification', { settings: { companion_name: '' } })).status, 400);
+  assert.equal((await s.patch('/api/gamification', { settings: { companion_name: 'x'.repeat(25) } })).status, 400);
+
+  // Settings survive a backup round trip.
+  const exp = (await s.get('/api/export')).body;
+  await s.patch('/api/gamification', { settings: { companion_name: 'Other' } });
+  await s.post('/api/import?mode=replace', exp);
+  assert.equal((await s.get('/api/gamification')).body.settings.companion_name, 'Mila');
 });
 
 test('drift review after 90 days', async (t) => {
@@ -341,7 +357,7 @@ test('scratchpad autosave target, snapshots and inbox sorting', async (t) => {
   const ideas = (await s.get('/api/ideas')).body;
   assert.ok(ideas.some((i) => i.title === 'Switch hosting?' && i.notes === 'open question'));
   const inbox = (await s.get('/api/projects')).body.find((p) => p.kind === 'inbox');
-  assert.equal(inbox.title, 'Inbox');
+  assert.equal(inbox.title, 'To-do');
   assert.equal(inbox.tasks[0].title, 'call bank');
 
   // Inbox zero is rewarded once per day; writing gives nothing.
@@ -471,7 +487,10 @@ test('local AI talks only to the configured endpoint and only suggests', async (
     calls.push({ url, body: JSON.parse(init.body), headers: init.headers });
     const prompt = JSON.parse(init.body).messages[0].content;
     if (prompt.includes('break a project')) return reply('{"steps":["Write the restore test","Pick a storage target","Write the restore test"],"reason":"Small first."}');
-    if (prompt.includes('You are Orbit')) return reply('Try the restore test first! It is small.');
+    if (prompt.includes('small friendly satellite robot')) {
+      assert.ok(prompt.startsWith('You are Orbit,'));
+      return reply('Try the restore test first! It is small.');
+    }
     if (prompt.includes('single word')) return reply('ready');
     if (prompt.includes('Idea title:')) {
       return reply('Sure! ```json\n{"title":"Backup audit","tasks":["List clients","Write checklist","Book first audit"],"importance":"important","urgency":"not_urgent","core_context":"core","mission_critical":"no","reason":"New offer, nothing breaks yet!"}\n```');
@@ -529,6 +548,39 @@ test('local AI talks only to the configured endpoint and only suggests', async (
   const dg = await s.post('/api/ai/digest');
   assert.equal(dg.body.text.includes('!'), false);
   assert.ok(calls.every((c) => c.url.startsWith('http://lmstudio.local:1234/')));
+});
+
+test('simple to-do list', async (t) => {
+  const s = await startServer();
+  t.after(s.close);
+  const todo = await s.get('/api/todo');
+  assert.equal(todo.status, 200);
+  assert.equal(todo.body.kind, 'inbox');
+  assert.equal(todo.body.title, 'To-do');
+  assert.equal((await s.get('/api/todo')).body.id, todo.body.id, 'created once');
+
+  const t1 = await s.post('/api/tasks', { project_id: todo.body.id, title: 'Buy stamps' });
+  const done = await s.patch(`/api/tasks/${t1.body.item.id}`, { status: 'done' });
+  assert.equal(done.body.reward.xp, 20);
+
+  // The list is not counted as a project and cannot be completed.
+  const st = (await s.get('/api/stats')).body;
+  assert.equal(st.projects.active, 0);
+  assert.equal(st.tasks.done, 1);
+  assert.equal((await s.patch(`/api/projects/${todo.body.id}`, { status: 'completed' })).status, 409);
+
+  // Move a to-do into a project and back.
+  const p = await s.post('/api/projects', { title: 'Taxes' });
+  const t2 = await s.post('/api/tasks', { project_id: todo.body.id, title: 'Find receipts' });
+  const mv = await s.patch(`/api/tasks/${t2.body.item.id}`, { project_id: p.body.item.id });
+  assert.equal(mv.body.item.project_id, p.body.item.id);
+  assert.equal((await s.get(`/api/projects/${p.body.item.id}`)).body.tasks.length, 1);
+  const other = s.client();
+  await s.post('/api/users', { username: 'erin', password: 'erin-password' });
+  await other.login('erin', 'erin-password');
+  const theirs = (await other.get('/api/todo')).body.id;
+  assert.notEqual(theirs, todo.body.id);
+  assert.equal((await s.patch(`/api/tasks/${t2.body.item.id}`, { project_id: theirs })).status, 400);
 });
 
 test('Orbit answers without AI, rule based', async (t) => {

@@ -222,9 +222,9 @@ function createAi(ctx, { enabled, env = process.env, fetchImpl = globalThis.fetc
     return { steps, reason: calm(clip(raw?.reason, 300)), prompt: { name: p.name, version: p.version }, model: r.model, latency_ms: r.latency_ms };
   }
 
-  async function orbitChat(message, facts) {
+  async function orbitChat(message, facts, name = 'Orbit') {
     const p = loadPrompt('orbit-chat');
-    const r = await chat(fill(p.body, { facts, message }));
+    const r = await chat(fill(p.body, { facts, message, name }));
     const text = calm(clip(r.text, 700));
     if (!text) throw new HttpError(502, 'ai_bad_output', 'The model returned an empty answer.');
     return { text, prompt: { name: p.name, version: p.version }, model: r.model, latency_ms: r.latency_ms };

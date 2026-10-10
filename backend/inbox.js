@@ -96,7 +96,7 @@ function createInbox(ctx) {
     return Number(
       db
         .prepare(
-          "INSERT INTO projects (user_id, title, notes, status, kind, created_at, updated_at) VALUES (?, 'Inbox', 'Tasks sorted from the scratchpad.', 'active', 'inbox', ?, ?)",
+          "INSERT INTO projects (user_id, title, notes, status, kind, created_at, updated_at) VALUES (?, 'To-do', 'Your simple to-do list.', 'active', 'inbox', ?, ?)",
         )
         .run(uid(), now, now).lastInsertRowid,
     );

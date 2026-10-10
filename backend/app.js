@@ -4,7 +4,7 @@ const path = require('node:path');
 const express = require('express');
 const rules = require('./rules');
 const items = require('./items');
-const { createGamification, XP, IDEA_CREATE_DAILY_CAP } = require('./gamification');
+const { createGamification, XP, IDEA_CREATE_DAILY_CAP, COMPANION_COLORS } = require('./gamification');
 const { createHome, ROOMS, CATALOGUE, GRIDS, FLAT_ITEMS } = require('./home');
 const { exportAll, importAll } = require('./importexport');
 const { createInbox, parseLines } = require('./inbox');
@@ -173,7 +173,13 @@ function createApp({
   api.get('/gamification', (req, res) => res.json(ctx.gameState()));
   api.patch('/gamification', (req, res) => {
     const body = validate(req.body, { settings: { type: 'object', required: true } });
-    const s = validate(body.settings, { effects: { type: 'bool' }, sound: { type: 'bool' } });
+    const s = validate(body.settings, {
+      effects: { type: 'bool' },
+      sound: { type: 'bool' },
+      companion_name: { type: 'string', min: 1, max: 24 },
+      companion_color: { type: 'enum', values: COMPANION_COLORS },
+      onboarded: { type: 'bool' },
+    });
     game.updateSettings(s);
     res.json(ctx.gameState());
   });
@@ -203,6 +209,9 @@ function createApp({
     res.json(inbox.restoreSnapshot(req.params.day));
   });
   api.get('/inbox/history', (req, res) => res.json(inbox.history()));
+
+  // The simple to-do list: one per user, created on first use (stored as the 'inbox' project).
+  api.get('/todo', (req, res) => res.json(ctx.loadProject(inbox.inboxProject())));
   api.post('/inbox/preview', (req, res) => {
     const body = validate(req.body, { text: { type: 'string', required: true, max: 200000 } });
     res.json({ items: parseLines(body.text), source: 'rules' });
@@ -278,7 +287,7 @@ function createApp({
     const facts = orbitFacts(ctx);
     if (aiEnabled) {
       try {
-        const r = await ai.orbitChat(body.message, facts.text);
+        const r = await ai.orbitChat(body.message, facts.text, game.settings().companion_name);
         return res.json({ text: r.text, source: 'ai', model: r.model });
       } catch (err) {
         return res.json({ text: facts.fallback, source: 'rules', note: err.message });
@@ -404,6 +413,9 @@ function stats(ctx) {
     if (i.core_context_quadrant) coreContext[i.core_context_quadrant] += 1;
   }
   const active = projects.filter((p) => p.open);
+  // The to-do list is not a project in the counts, but its tasks count as tasks.
+  const realProjects = projects.filter((p) => p.kind !== 'inbox');
+  const activeProjects = realProjects.filter((p) => p.open);
   const openTasks = active.flatMap((p) => p.tasks.filter((t) => t.status !== 'done').map((t) => ({ ...t, quadrant: p.core_context_quadrant })));
   const doneTasks = projects.reduce((n, p) => n + p.tasks_done, 0);
   const manageOpen = openTasks.filter((t) => t.quadrant === 'manage').length;
@@ -422,7 +434,7 @@ function stats(ctx) {
 
   return {
     ideas: { total: ideas.length, by_status: byStatus, parked: byStatus.parked },
-    projects: { total: projects.length, active: active.length, completed: projects.length - active.length },
+    projects: { total: realProjects.length, active: activeProjects.length, completed: realProjects.length - activeProjects.length },
     tasks: { open: openTasks.length, done: doneTasks },
     eisenhower,
     core_context: coreContext,

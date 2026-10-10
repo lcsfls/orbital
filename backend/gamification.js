@@ -40,7 +40,10 @@ const ACTION_MESSAGE = {
   project_completed: 'Done beats perfect.',
 };
 
-const DEFAULT_SETTINGS = { effects: true, sound: false };
+// Calm body colours for the companion robot. The id is stored, the UI maps it to a colour.
+const COMPANION_COLORS = ['moon', 'sky', 'mint', 'peach', 'rose', 'lilac', 'sand'];
+
+const DEFAULT_SETTINGS = { effects: true, sound: false, companion_name: 'Orbit', companion_color: 'moon', onboarded: false };
 
 // Level n starts at 50 * n * (n - 1) XP: 0, 100, 300, 600, 1000, ...
 function levelFloor(level) {
@@ -189,6 +192,7 @@ function createGamification(db, clock, uid) {
 }
 
 module.exports = {
+  COMPANION_COLORS,
   XP,
   IDEA_CREATE_DAILY_CAP,
   MESSAGES,

@@ -63,6 +63,8 @@ export function supported() {
 
 export function openRoom(opts) {
   const { api, home, effects, toast, celebrate, onClose, onState, message, aiEnabled } = opts;
+  const NAME = opts.companion?.name || 'Orbit';
+  const BODY = new THREE.Color(opts.companion?.color || '#f3effa');
   let state = home.state;
   const grids = home.grids;
   const FLAT = new Set(home.flat_items || ['rug', 'pond']);
@@ -119,7 +121,7 @@ export function openRoom(opts) {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.domElement.setAttribute('role', 'img');
-  renderer.domElement.setAttribute('aria-label', 'A 3D view of your house with Orbit');
+  renderer.domElement.setAttribute('aria-label', `A 3D view of your house with ${NAME}`);
   stage.prepend(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -535,7 +537,7 @@ export function openRoom(opts) {
   }
   const bodyGeo = new THREE.ExtrudeGeometry(bs, { depth: 0.3, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 4, curveSegments: 8 });
   bodyGeo.translate(0, 0, -0.15);
-  const body = new THREE.Mesh(bodyGeo, mat(0xf3effa, { roughness: 0.45 }));
+  const body = new THREE.Mesh(bodyGeo, mat(BODY, { roughness: 0.45, emissive: BODY, emissiveIntensity: 0.22 }));
   body.castShadow = true;
   const ink = new THREE.MeshBasicMaterial({ color: 0x23213a });
   const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.045, 16, 12), ink);
@@ -825,15 +827,15 @@ export function openRoom(opts) {
         }
       }
       html += placed.length
-        ? `<p class="quiet">Tap the floor and Orbit floats there. Tap a thing to use it.</p>
+        ? `<p class="quiet">Tap the floor and ${esc(NAME)} floats there. Tap a thing to use it.</p>
            <div class="room-chips">${placed.map((i) => `<button data-r="use" data-id="${i.id}">${esc((ACTIONS[i.id] || { verb: 'Look at' }).verb)}</button>`).join('')}</div>`
         : '<p class="quiet">Nothing here yet. Switch to Arrange to bring in your first thing.</p>';
       html += `<form class="room-ask" data-r="ask-form" autocomplete="off">
-          <input type="text" data-r="ask" maxlength="500" placeholder="Ask Orbit something" aria-label="Ask Orbit">
+          <input type="text" data-r="ask" maxlength="500" placeholder="Ask ${esc(NAME)} something" aria-label="Ask ${esc(NAME)}">
           <button class="btn small" type="submit">Ask</button></form>
         <div class="room-chips">${ASK_CHIPS.map((q) => `<button data-r="ask-chip" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
         ${orbitReply ? `<p class="room-reply">${esc(orbitReply)}</p>` : ''}
-        ${aiEnabled ? '' : '<p class="quiet small">Orbit answers from your open tasks. With local AI turned on, it can say more.</p>'}`;
+        ${aiEnabled ? '' : `<p class="quiet small">${esc(NAME)} answers from your open tasks. With local AI turned on, it can say more.</p>`}`;
       ctx.innerHTML = html;
       $r('ask-form').addEventListener('submit', (e) => {
         e.preventDefault();
@@ -931,7 +933,7 @@ export function openRoom(opts) {
   async function ask(text) {
     const q = String(text || '').trim();
     if (!q) return;
-    orbitReply = 'Orbit is thinking.';
+    orbitReply = `${NAME} is thinking.`;
     renderPanel();
     say('Hmm, let me think.', 8000);
     try {

@@ -5,6 +5,7 @@
 const rules = require('./rules');
 const { schemaVersion } = require('./db');
 const { HttpError } = require('./validate');
+const { COMPANION_COLORS } = require('./gamification');
 
 const FORMAT_VERSION = 1;
 
@@ -251,7 +252,13 @@ function importAll(ctx, data, mode = 'merge') {
         int(g.streak),
         int(g.best_streak),
         typeof g.last_active_day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(g.last_active_day) ? g.last_active_day : null,
-        JSON.stringify({ effects: g.settings?.effects !== false, sound: g.settings?.sound === true }),
+        JSON.stringify({
+          effects: g.settings?.effects !== false,
+          sound: g.settings?.sound === true,
+          companion_name: typeof g.settings?.companion_name === 'string' && g.settings.companion_name.trim() ? g.settings.companion_name.trim().slice(0, 24) : 'Orbit',
+          companion_color: COMPANION_COLORS.includes(g.settings?.companion_color) ? g.settings.companion_color : 'moon',
+          onboarded: g.settings?.onboarded !== false,
+        }),
         u,
       );
       const refMaps = { idea: ideaMap, project: projectMap, task: taskMap };

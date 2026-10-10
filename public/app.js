@@ -22,9 +22,27 @@
   const MANAGE_TIP = 'Keep it running, keep it cheap. This is not a failure of the matrix, it is the matrix working.';
   const MANAGE_REASON = 'Context, mission-critical';
   const REASONS = ['Contract obligation', 'Security vulnerability', 'Blocks another project', 'Legal requirement'];
+  // The companion robot: users give it a name and a colour during setup.
+  const COMPANION_COLORS = {
+    moon: { label: 'Moon', hex: '#f3effa' },
+    sky: { label: 'Sky', hex: '#b9d4f2' },
+    mint: { label: 'Mint', hex: '#bfe6cf' },
+    peach: { label: 'Peach', hex: '#f6caa0' },
+    rose: { label: 'Rose', hex: '#f2bfcf' },
+    lilac: { label: 'Lilac', hex: '#d4c6f2' },
+    sand: { label: 'Sand', hex: '#e8dcc0' },
+  };
+  const NAME_IDEAS = ['Orbit', 'Mila', 'Pixel', 'Nova', 'Bo', 'Juno'];
+  const cname = () => S.game?.settings?.companion_name || 'Orbit';
+  const ccolor = () => (COMPANION_COLORS[S.game?.settings?.companion_color] || COMPANION_COLORS.moon).hex;
+  function applyCompanion(hex = ccolor()) {
+    document.documentElement.style.setProperty('--orbit-body', hex);
+  }
   const MSG = {
     idle: 'Orbiting the core. Nothing urgent.',
-    alert: 'Mandatory item open. Orbit is waiting.',
+    get alert() {
+      return `Mandatory item open. ${cname()} is waiting.`;
+    },
     emptyIdeas: 'Nothing in orbit yet.',
     emptyProjects: 'No projects in orbit.',
   };
@@ -116,7 +134,8 @@
     setOrbitState(state);
     const message = S.orbitOverride || (state === 'alert' ? MSG.alert : MSG.idle);
     $('#orbitTip').textContent = message;
-    $('#orbitBtn').setAttribute('aria-label', `Orbit says: ${message}`);
+    $('#orbitBtn').setAttribute('aria-label', `${cname()} says: ${message}`);
+    applyCompanion();
     $('#levelLabel').textContent = `Level ${g.level}`;
     const pct = Math.round(g.progress * 100);
     $('#xpBar > span').style.width = `${pct}%`;
@@ -237,6 +256,7 @@
 
   // ---------- Data ----------
   async function loadAll() {
+    await api('GET', '/api/todo');
     const [ideas, projects, stats, game] = await Promise.all([
       api('GET', '/api/ideas'),
       api('GET', '/api/projects'),
@@ -295,11 +315,154 @@
     $('#shell').hidden = false;
     $('#whoLabel').textContent = S.user.display_name || S.user.username;
     await Promise.all([loadAll(), loadScratch()]);
+    if (!S.game.settings.onboarded) return showOnboarding();
     showTab(location.hash.slice(1) || 'today');
   }
 
+  // ---------- First-run setup for every new account ----------
+  const OB = { step: 0 };
+  const OB_STEPS = ['hello', 'name', 'color', 'you', 'comfort', 'first', 'done'];
+
+  function showOnboarding() {
+    Object.assign(OB, {
+      step: 0,
+      name: cname(),
+      color: S.game.settings.companion_color || 'moon',
+      display: S.user.display_name || '',
+      effects: S.game.settings.effects !== false,
+      sound: Boolean(S.game.settings.sound),
+      todo: '',
+    });
+    $('#shell').hidden = true;
+    $('#onboard').hidden = false;
+    renderOnboarding();
+  }
+
+  function renderOnboarding() {
+    const step = OB_STEPS[OB.step];
+    const hex = COMPANION_COLORS[OB.color].hex;
+    applyCompanion(hex);
+    const nm = esc(OB.name.trim() || 'Orbit');
+    const dots = OB_STEPS.slice(1, -1).map((s, i) => `<i class="${i < OB.step ? 'on' : ''}"></i>`).join('');
+    let body = '';
+    let next = 'Next';
+    if (step === 'hello') {
+      body = `<h1>Hi. I am your companion.</h1>
+        <p class="lead">Let us set things up together. It takes about a minute, and you can change everything later in Settings.</p>`;
+      next = 'Start';
+    } else if (step === 'name') {
+      body = `<p class="q">What should I be called?</p><p class="q-help">Pick a name you like. Short names are easiest.</p>
+        <label class="field"><span class="sr-only">Name</span><input type="text" id="obName" maxlength="24" value="${esc(OB.name)}" autocomplete="off"></label>
+        <div class="filters">${NAME_IDEAS.map((n) => `<button type="button" data-ob="name-idea" data-v="${n}" class="${OB.name === n ? 'on' : ''}">${n}</button>`).join('')}</div>`;
+    } else if (step === 'color') {
+      body = `<p class="q">Which colour suits ${nm}?</p><p class="q-help">Only for looks. You can change it any time.</p>
+        <div class="swatches" role="radiogroup" aria-label="Colour">${Object.entries(COMPANION_COLORS)
+          .map(([id, c]) => `<button type="button" role="radio" aria-checked="${OB.color === id}" data-ob="color" data-v="${id}" class="swatch${OB.color === id ? ' on' : ''}"><span style="background:${c.hex}"></span>${c.label}</button>`)
+          .join('')}</div>`;
+    } else if (step === 'you') {
+      body = `<p class="q">What should ${nm} call you?</p><p class="q-help">Your first name or a nickname is fine.</p>
+        <label class="field"><span class="sr-only">Your name</span><input type="text" id="obYou" maxlength="80" value="${esc(OB.display)}" autocomplete="given-name"></label>`;
+    } else if (step === 'comfort') {
+      body = `<p class="q">How lively should things be?</p><p class="q-help">When you finish something, ${nm} can do a little lap with some confetti. If your system asks for reduced motion, everything stays still anyway.</p>
+        <div class="choices">
+          <button class="choice${OB.effects ? ' on' : ''}" data-ob="effects" data-v="1">Small celebrations<small>${nm} moves, a little confetti</small></button>
+          <button class="choice${!OB.effects ? ' on' : ''}" data-ob="effects" data-v="0">Keep it still<small>No movement, no confetti</small></button>
+        </div>
+        <label class="check" style="margin-top:18px"><input type="checkbox" id="obSound" ${OB.sound ? 'checked' : ''}> A soft sound when something is done</label>`;
+    } else if (step === 'first') {
+      body = `<p class="q">One small thing for today?</p><p class="q-help">Optional. It goes on your to-do list. Something tiny is perfect.</p>
+        <label class="field"><span class="sr-only">First to-do</span><input type="text" id="obTodo" maxlength="200" value="${esc(OB.todo)}" placeholder="e.g. Drink a glass of water"></label>`;
+      next = OB.todo.trim() ? 'Add it' : 'Skip this';
+    } else {
+      body = `<h1>${nm} is ready.</h1>
+        <p class="lead">${OB.display.trim() ? `Nice to meet you, ${esc(OB.display.trim())}. ` : ''}Tap ${nm} any time to visit your little house.</p>`;
+      next = 'Let us go';
+    }
+    $('#onboard').innerHTML = `<div class="auth-card onboard-card">
+      <div class="onboard-orbit">${orbitSvg(step === 'hello' || step === 'done' ? 170 : 140)}</div>
+      ${step !== 'hello' && step !== 'done' ? `<div class="steps" aria-hidden="true">${dots}</div><p class="quiet small" style="margin:-14px 0 18px">Step ${OB.step} of ${OB_STEPS.length - 2}</p>` : ''}
+      <div class="onboard-body">${body}</div>
+      <div class="actions" style="justify-content:center">
+        ${OB.step > 0 && step !== 'done' ? '<button class="btn soft" data-ob="back">Back</button>' : ''}
+        <button class="btn" data-ob="next">${next}</button>
+      </div>
+      ${step !== 'done' ? '<p style="margin-top:18px"><button class="btn text" data-ob="skip">Skip setup</button></p>' : ''}
+    </div>`;
+    if (S.game.settings.effects !== false) setOrbitState(step === 'done' ? 'celebrate' : 'idle');
+    const bind = (sel, key) => {
+      const el = $(sel);
+      if (!el) return;
+      el.addEventListener('input', () => {
+        OB[key] = el.value;
+        if (key === 'todo') $('[data-ob="next"]').textContent = OB.todo.trim() ? 'Add it' : 'Skip this';
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          onboardAct('next');
+        }
+      });
+      el.focus();
+    };
+    bind('#obName', 'name');
+    bind('#obYou', 'display');
+    bind('#obTodo', 'todo');
+    $('#obSound')?.addEventListener('change', (e) => (OB.sound = e.target.checked));
+    if (!$('#obName, #obYou, #obTodo')) $('[data-ob="next"]').focus();
+  }
+
+  async function finishOnboarding(skipped) {
+    const settings = skipped
+      ? { onboarded: true }
+      : { onboarded: true, companion_name: OB.name.trim() || 'Orbit', companion_color: OB.color, effects: OB.effects, sound: OB.sound };
+    try {
+      S.game = await api('PATCH', '/api/gamification', { settings });
+      if (!skipped && OB.display.trim() && OB.display.trim() !== S.user.display_name) {
+        S.user = (await api('PATCH', '/api/auth/profile', { display_name: OB.display.trim() })).user;
+        $('#whoLabel').textContent = S.user.display_name || S.user.username;
+      }
+      if (!skipped && OB.todo.trim()) {
+        const list = await api('GET', '/api/todo');
+        await api('POST', '/api/tasks', { project_id: list.id, title: OB.todo.trim().slice(0, 200) });
+      }
+    } catch (err) {
+      fail(err);
+    }
+    $('#onboard').hidden = true;
+    $('#onboard').innerHTML = '';
+    $('#shell').hidden = false;
+    applyCompanion();
+    await loadAll();
+    showTab(location.hash.slice(1) || 'today');
+  }
+
+  function onboardAct(a, v) {
+    if (a === 'skip') return finishOnboarding(true);
+    if (a === 'back') {
+      OB.step = Math.max(0, OB.step - 1);
+      return renderOnboarding();
+    }
+    if (a === 'name-idea') OB.name = v;
+    if (a === 'color') OB.color = v;
+    if (a === 'effects') OB.effects = v === '1';
+    if (a === 'name-idea' || a === 'color' || a === 'effects') return renderOnboarding();
+    if (a === 'next') {
+      if (OB_STEPS[OB.step] === 'name' && !OB.name.trim()) OB.name = 'Orbit';
+      if (OB.step === OB_STEPS.length - 1) return finishOnboarding(false);
+      OB.step += 1;
+      renderOnboarding();
+    }
+  }
+  $('#onboard').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-ob]');
+    if (b) onboardAct(b.dataset.ob, b.dataset.v);
+  });
+
   // ---------- Routing ----------
-  const TABS = ['today', 'scratch', 'ideas', 'projects', 'home', 'guide', 'settings'];
+  const TABS = ['today', 'todo', 'scratch', 'ideas', 'projects', 'home', 'guide', 'settings'];
+  // The simple to-do list is stored as the user's 'inbox' project.
+  const todoList = () => S.projects.find((p) => p.kind === 'inbox' && p.open);
+  const realProjects = () => S.projects.filter((p) => p.kind !== 'inbox');
   let current = 'today';
   function showTab(name) {
     if (!TABS.includes(name) || (name === 'home' && !S.config.home_enabled)) name = 'today';
@@ -319,7 +482,7 @@
   const VIEWS = {};
   function render() {
     const main = $('#main');
-    const top = `<div class="mobile-top"><button type="button" data-act="room" aria-label="Open the living room">${orbitSvg(44)}<div><div class="me-level">Level ${S.game?.level ?? 1}</div><div class="quiet small">${esc(S.game?.streak ? `${plural(S.game.streak, 'day')} in a row` : 'Tap to visit Orbit')}</div></div></button></div>`;
+    const top = `<div class="mobile-top"><button type="button" data-act="room" aria-label="Open the living room">${orbitSvg(44)}<div><div class="me-level">Level ${S.game?.level ?? 1}</div><div class="quiet small">${esc(S.game?.streak ? `${plural(S.game.streak, 'day')} in a row` : `Tap to visit ${esc(cname())}`)}</div></div></button></div>`;
     main.innerHTML = top + VIEWS[current]();
     renderStatus();
     VIEWS[`${current}After`]?.();
@@ -370,7 +533,7 @@
       focus = `<div class="focus" data-flash="task-${nt.t.id}">
         <div class="label">Next up</div>
         <div class="big">${esc(nt.t.title)}</div>
-        <div class="where">in ${esc(nt.p.title)}</div>
+        <div class="where">${nt.p.kind === 'inbox' ? 'on your to-do list' : `in ${esc(nt.p.title)}`}</div>
         <div class="actions"><button class="btn" data-act="today-done" data-id="${nt.t.id}">Mark as done</button>
         ${left > 1 ? `<button class="btn text" data-act="today-skip" data-id="${nt.t.id}">Not now, show another</button>` : ''}</div>
         ${progressLine(left === 1 ? '. This is the last one.' : `. ${left} to go.`)}</div>`;
@@ -397,7 +560,7 @@
     const total = Object.values(cc).reduce((a, b) => a + b, 0);
 
     // "At a glance": collapsed by default, remembered per browser.
-    const activeProjects = S.projects.filter((p) => p.open);
+    const activeProjects = realProjects().filter((p) => p.open);
     let glanceOpen = false;
     try { glanceOpen = localStorage.getItem('orbital.glance') === '1'; } catch { /* storage unavailable */ }
     const num = (n, label) => `<div><div class="n">${n}</div><div class="quiet small">${label}</div></div>`;
@@ -870,8 +1033,8 @@
   }
 
   VIEWS.projects = () => {
-    const active = S.projects.filter((p) => p.open);
-    const done = S.projects.filter((p) => !p.open);
+    const active = realProjects().filter((p) => p.open);
+    const done = realProjects().filter((p) => !p.open);
     return `<div class="page">
       <h1>Projects</h1>
       <p class="lead">Small steps. Tick them off one by one.</p>
@@ -964,6 +1127,7 @@
       <div class="choices">
         ${task.status !== 'doing' ? '<button class="choice" data-v="doing">I am working on it<small>Shows it as in progress</small></button>' : '<button class="choice" data-v="todo">Not working on it right now</button>'}
         <button class="choice" data-v="mandatory">${task.mandatory ? 'It does not have to happen after all' : 'It must happen no matter what'}</button>
+        <button class="choice" data-v="move">Move to ${S.projects.find((p) => p.id === task.project_id)?.kind === 'inbox' ? 'a project' : 'another place'}</button>
         <button class="choice" data-v="rename">Rename</button>
         <button class="choice" data-v="delete">Delete</button>
       </div><div class="actions"><button class="btn soft" data-v="close">Close</button></div></div>`;
@@ -983,6 +1147,22 @@
         }
         applyResult(await api('PATCH', `/api/tasks/${id}`, { mandatory: !task.mandatory, mandatory_reason: reason }));
       }
+      if (v === 'move') {
+        const places = S.projects.filter((p) => p.open && p.id !== task.project_id);
+        if (!places.length) return toast('There is no other place yet. Create a project first.');
+        modal.innerHTML = `<div class="modal-inner"><h2 id="modalTitle">Move "${esc(task.title)}"</h2><div class="choices">
+          ${places.map((p) => `<button class="choice" data-to="${p.id}">${p.kind === 'inbox' ? 'To-do list' : esc(p.title)}</button>`).join('')}
+          </div><div class="actions"><button class="btn soft" data-to="">Cancel</button></div></div>`;
+        modal.showModal();
+        const to = await new Promise((resolve) => {
+          modal.querySelectorAll('[data-to]').forEach((b) => (b.onclick = () => resolve(b.dataset.to)));
+          modal.oncancel = () => resolve('');
+        });
+        if (modal.open) modal.close();
+        if (!to) return;
+        await api('PATCH', `/api/tasks/${id}`, { project_id: Number(to) });
+        toast('Moved.');
+      }
       if (v === 'rename') {
         const title = await prompted('Rename task', 'Task', task.title);
         if (!title) return;
@@ -997,6 +1177,66 @@
       fail(err);
     }
   }
+
+  // ---------- To-do: a simple list, no project needed ----------
+  function todoRow(t) {
+    return `<div class="task ${t.status}" data-flash="task-${t.id}">
+      <button class="tick" data-act="task-toggle" data-id="${t.id}" aria-label="${t.status === 'done' ? 'Mark as not done' : 'Mark as done'}: ${esc(t.title)}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12l5 5L19 7"/></svg></button>
+      <div class="tt">${esc(t.title)}${t.status === 'doing' ? ' <span class="chip sky">In progress</span>' : ''}${t.mandatory ? ' <span class="chip sun">Must happen</span>' : ''}</div>
+      <button class="btn text small" data-act="task-menu" data-id="${t.id}" aria-label="Options for ${esc(t.title)}">Options</button>
+    </div>`;
+  }
+
+  VIEWS.todo = () => {
+    const list = todoList();
+    const tasks = list ? list.tasks : [];
+    const open = tasks.filter((t) => t.status !== 'done').sort((a, b) => Number(b.mandatory) - Number(a.mandatory) || Number(b.status === 'doing') - Number(a.status === 'doing'));
+    const done = tasks.filter((t) => t.status === 'done');
+    return `<div class="page">
+      <h1>To-do</h1>
+      <p class="lead">Little things. No project needed.</p>
+      <form class="capture" id="todoForm" autocomplete="off">
+        <input type="text" id="todoInput" maxlength="200" placeholder="Add a to-do" aria-label="New to-do">
+        <button class="btn" type="submit">Add</button>
+      </form>
+      ${open.length
+        ? `<div class="panel todo-list">${open.map(todoRow).join('')}</div>`
+        : `<div class="empty"><strong>${done.length ? 'All done.' : 'Nothing on the list.'}</strong>${done.length ? 'A pause is fine.' : 'Type the first little thing above.'}</div>`}
+      ${done.length ? `<section><details class="fold"><summary>Done (${done.length})</summary><div>
+        <div class="todo-list">${done.map(todoRow).join('')}</div>
+        <div class="actions"><button class="btn soft small" data-act="clear-done">Clear done items</button></div>
+      </div></details></section>` : ''}
+    </div>`;
+  };
+
+  VIEWS.todoAfter = () => {
+    const input = $('#todoInput');
+    if (!input) return;
+    $('#todoForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const title = input.value.trim();
+      if (!title) return input.focus();
+      try {
+        const list = todoList() || (await api('GET', '/api/todo'));
+        const resp = await api('POST', '/api/tasks', { project_id: list.id, title });
+        input.value = '';
+        applyResult(resp);
+        await refresh();
+        flash('task', resp.item.id);
+        $('#todoInput')?.focus();
+      } catch (err) {
+        fail(err);
+      }
+    });
+    // Several pasted lines: review them first, each line becomes a to-do.
+    input.addEventListener('paste', (e) => {
+      const text = e.clipboardData?.getData('text') || '';
+      if (text.split(/\r?\n/).filter((l) => l.trim()).length < 2) return;
+      e.preventDefault();
+      openInbox({ origin: 'paste', text: text.replace(/\r\n/g, '\n'), kind: 'task' }).catch(fail);
+    });
+    if (!matchMedia('(pointer: coarse)').matches) input.focus();
+  };
 
   // ---------- Guide ----------
   VIEWS.guide = () => {
@@ -1078,7 +1318,7 @@
   VIEWS.scratch = () => `<div class="page wide">
     <h1>Scratch</h1>
     <p class="lead">Type anything. Sort it into ideas and tasks later.</p>
-    <textarea id="scratch" spellcheck="false" aria-label="Scratchpad" placeholder="Just start typing.&#10;&#10;- lines starting with a dash become tasks&#10;questions end with a question mark?&#10;everything else becomes a parked idea"></textarea>
+    <textarea id="scratch" spellcheck="false" aria-label="Scratchpad" placeholder="Just start typing.&#10;&#10;- lines starting with a dash become to-dos&#10;questions end with a question mark?&#10;everything else becomes a parked idea"></textarea>
     <div class="scratch-bar">
       <button class="btn" data-act="sort" title="Ctrl or Cmd + Enter">Sort into Orbital</button>
       <button class="btn text" data-act="history">Snapshots and history</button>
@@ -1144,7 +1384,7 @@
     await openInbox({ origin: 'scratch', text, lines, range });
   }
 
-  async function openInbox({ origin, text, lines = null, range = null }) {
+  async function openInbox({ origin, text, lines = null, range = null, kind = null }) {
     Object.assign(inbox, { origin, text, lines, range, source: 'rules' });
     const r = await api('POST', '/api/inbox/preview', { text });
     let idx = range ? range[0] : 0;
@@ -1153,7 +1393,7 @@
       while (idx < src.length && src[idx].trim() !== it.source) idx += 1;
       const line = idx;
       idx += 1;
-      return { ...it, on: true, line };
+      return { ...it, kind: kind || it.kind, notes: kind ? '' : it.notes, on: true, line };
     });
     renderInbox();
   }
@@ -1168,7 +1408,7 @@
             (it, i) => `<div class="inbox-row${it.on ? '' : ' off'}">
             <input type="checkbox" style="width:22px;height:22px;margin-top:12px;accent-color:var(--sun)" data-i="${i}" data-f="on" ${it.on ? 'checked' : ''} aria-label="Include">
             <div class="grow"><input type="text" data-i="${i}" data-f="title" maxlength="200" value="${esc(it.title)}" aria-label="Title">
-              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><select data-i="${i}" data-f="kind" aria-label="Becomes"><option value="idea" ${it.kind === 'idea' ? 'selected' : ''}>Becomes an idea</option><option value="task" ${it.kind === 'task' ? 'selected' : ''}>Becomes a task in Inbox</option></select>
+              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><select data-i="${i}" data-f="kind" aria-label="Becomes"><option value="idea" ${it.kind === 'idea' ? 'selected' : ''}>Becomes an idea</option><option value="task" ${it.kind === 'task' ? 'selected' : ''}>Becomes a to-do</option></select>
               ${it.notes ? `<span class="quiet small">${esc(it.notes)}</span>` : ''}${it.reason ? `<span class="quiet small">${esc(it.reason)}</span>` : ''}</div></div></div>`,
           )
           .join('')}</div>
@@ -1345,6 +1585,7 @@
     return `<div class="page">
       <h1>Settings</h1>
       <p class="lead">Make Orbital comfortable for you.</p>
+      <p class="settings-guide"><a href="#guide">How Orbital decides (the guide)</a></p>
       <div class="panel"><h2>You</h2>
         <form id="profileForm"><label class="field"><span>Your name</span><input type="text" id="setName" maxlength="80" value="${esc(S.user.display_name)}"></label>
         <button class="btn soft" type="submit">Save name</button></form>
@@ -1354,8 +1595,15 @@
           <button class="btn soft" type="submit">Change password</button><div class="error" id="pwMsg"></div></form>
         <div class="actions"><button class="btn line" data-act="logout">Sign out</button></div>
       </div>
+      <div class="panel"><h2>Your companion</h2>
+        <form id="companionForm"><label class="field"><span>Name</span><input type="text" id="setCompanion" maxlength="24" value="${esc(cname())}"></label>
+        <div class="swatches" role="radiogroup" aria-label="Colour">${Object.entries(COMPANION_COLORS)
+          .map(([id, c]) => `<button type="button" role="radio" aria-checked="${g.settings.companion_color === id}" data-color="${id}" class="swatch${(g.settings.companion_color || 'moon') === id ? ' on' : ''}"><span style="background:${c.hex}"></span>${c.label}</button>`)
+          .join('')}</div>
+        <div class="actions"><button class="btn soft" type="submit">Save</button><button class="btn text" type="button" data-act="rerun-setup">Run the setup again</button></div></form>
+      </div>
       <div class="panel"><h2>Comfort</h2>
-        <label class="check"><input type="checkbox" id="setEffects" ${g.settings.effects !== false ? 'checked' : ''}> Celebrations (Orbit moves, a little confetti)</label>
+        <label class="check"><input type="checkbox" id="setEffects" ${g.settings.effects !== false ? 'checked' : ''}> Celebrations (${esc(cname())} moves, a little confetti)</label>
         <label class="check"><input type="checkbox" id="setSound" ${g.settings.sound ? 'checked' : ''}> A soft sound when something is done</label>
         <p class="quiet small" style="margin-top:8px">If your system asks for reduced motion, Orbital stays still anyway.</p>
       </div>
@@ -1378,6 +1626,27 @@
         S.user = r.user;
         $('#whoLabel').textContent = S.user.display_name || S.user.username;
         toast('Name saved.');
+      } catch (err) {
+        fail(err);
+      }
+    });
+    let pickedColor = S.game.settings.companion_color || 'moon';
+    $$('#companionForm [data-color]').forEach((b) =>
+      b.addEventListener('click', () => {
+        pickedColor = b.dataset.color;
+        $$('#companionForm [data-color]').forEach((x) => {
+          x.classList.toggle('on', x === b);
+          x.setAttribute('aria-checked', String(x === b));
+        });
+        applyCompanion(COMPANION_COLORS[pickedColor].hex);
+      }),
+    );
+    $('#companionForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        S.game = await api('PATCH', '/api/gamification', { settings: { companion_name: $('#setCompanion').value.trim() || 'Orbit', companion_color: pickedColor } });
+        renderStatus();
+        toast(`Saved. Say hi to ${cname()}.`);
       } catch (err) {
         fail(err);
       }
@@ -1493,7 +1762,7 @@
 
   // ---------- Home: entry to the 3D house ----------
   const HOME_ROOMS = [
-    { id: 'living', name: 'Living room', text: 'Sofa, plants, a lamp. Hang out with Orbit.', icon: '<path d="M4 13v5h16v-5"/><path d="M6 13V9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v4"/><path d="M4 13a2 2 0 0 1 4 0v2h8v-2a2 2 0 0 1 4 0"/>' },
+    { id: 'living', name: 'Living room', text: 'Sofa, plants, a lamp. Hang out with your companion.', icon: '<path d="M4 13v5h16v-5"/><path d="M6 13V9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v4"/><path d="M4 13a2 2 0 0 1 4 0v2h8v-2a2 2 0 0 1 4 0"/>' },
     { id: 'workshop', name: 'Workshop', text: 'Workbench, printer, the homelab rack.', icon: '<path d="M14 6l4 4-8 8H6v-4z"/><path d="M13 7l4 4"/>' },
     { id: 'garden', name: 'Garden', text: 'Lawn, hammock, a pond. Mow it with a swipe.', icon: '<path d="M12 21v-7"/><path d="M12 14c-4 0-6-3-6-6 3 0 6 2 6 6z"/><path d="M12 12c0-4 3-7 6-7 0 4-2 7-6 7z"/><path d="M4 21h16"/>' },
   ];
@@ -1503,7 +1772,7 @@
     <div class="home-rooms">${HOME_ROOMS.map((r) => `<button class="home-room" data-act="room" data-room="${r.id}">
       <span class="ico"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${r.icon}</svg></span>
       <span><span class="t">${r.name}</span><br><span class="s">${r.text}</span></span></button>`).join('')}</div>
-    <p class="quiet" style="margin-top:22px">Tip: tapping Orbit or your level opens the living room from anywhere.</p>
+    <p class="quiet" style="margin-top:22px">Tip: tapping ${esc(cname())} or your level opens the living room from anywhere.</p>
   </div>`;
 
   // ---------- 3D living room ----------
@@ -1524,6 +1793,7 @@
         api,
         home: S.home,
         room,
+        companion: { name: cname(), color: ccolor() },
         aiEnabled: Boolean(S.config.ai_enabled),
         effects: effectsOn(),
         message: S.game?.alert_count ? MSG.alert : null,
@@ -1555,9 +1825,25 @@
     switch (a) {
       case 'close': return closeSheet();
       case 'room': return openLivingRoom(btn.dataset.room || 'living');
+      case 'rerun-setup': return showOnboarding();
       case 'open-idea': return openIdea(id);
       case 'open-project': S.openProject = id; closeSheet(); if (current !== 'projects') location.hash = 'projects'; else render(); return;
-      case 'open-task': S.openProject = id; location.hash = 'projects'; return;
+      case 'open-task':
+        if (projectById(id)?.kind === 'inbox') {
+          location.hash = 'todo';
+          return;
+        }
+        S.openProject = id;
+        location.hash = 'projects';
+        return;
+      case 'clear-done': {
+        const list = todoList();
+        const doneItems = list ? list.tasks.filter((t) => t.status === 'done') : [];
+        if (!doneItems.length) return;
+        if (!(await ask('Clear done to-dos?', `${plural(doneItems.length, 'done item')} will be removed from the list. Your points stay.`, 'Clear'))) return;
+        for (const t of doneItems) await api('DELETE', `/api/tasks/${t.id}`);
+        return refresh();
+      }
       case 'quad': S.quadFilter = btn.dataset.q; S.ideaFilter = 'open'; location.hash = 'ideas'; return;
       case 'quad-clear': S.quadFilter = ''; return render();
       case 'ifilter': S.ideaFilter = btn.dataset.f; return render();

@@ -71,15 +71,23 @@ module.exports = function tasksRouter(ctx) {
     const id = parseId(req.params.id);
     const prev = getRow(id);
     const patch = items.toRow(validate(req.body, items.TASK_SCHEMA, { partial: true }));
+    // Moving a task to another of your own projects (or the to-do list) puts it at the end there.
+    let moved = false;
     if ('project_id' in patch && patch.project_id !== prev.project_id) {
-      throw new HttpError(400, 'validation_error', 'Tasks cannot be moved to another project');
+      if (!db.prepare('SELECT id FROM projects WHERE id = ? AND user_id = ?').get(patch.project_id, ctx.uid())) {
+        throw new HttpError(400, 'validation_error', 'project_id does not exist');
+      }
+      moved = true;
     }
     const now = ctx.nowIso();
     const row = { ...prev, ...patch, updated_at: now };
+    if (moved && !('position' in patch)) {
+      row.position = db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS p FROM tasks WHERE project_id = ?').get(row.project_id).p;
+    }
     if (row.status === 'done' && prev.status !== 'done') row.done_at = now;
     if (row.status !== 'done') row.done_at = null;
     db.prepare(
-      `UPDATE tasks SET title=@title, status=@status, mandatory=@mandatory, mandatory_reason=@mandatory_reason,
+      `UPDATE tasks SET project_id=@project_id, title=@title, status=@status, mandatory=@mandatory, mandatory_reason=@mandatory_reason,
        position=@position, done_at=@done_at, updated_at=@updated_at WHERE id=@id`,
     ).run(row);
     const rewards = row.status === 'done' && prev.status !== 'done' ? [doneReward(row, id)] : [];

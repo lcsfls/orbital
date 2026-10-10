@@ -6,7 +6,8 @@ Orbit, the little satellite in the sidebar, shows how things stand: it orbits qu
 
 <img src="docs/orbit-mascot.svg" alt="Orbit in its three states: idle, celebrate, alert" width="600">
 
-- **Scratch:** a plain notepad that saves itself. Press "Sort" and lines become ideas or tasks.
+- **To-do:** a simple list for little things that do not need a project. You can move any item into a project later.
+- **Scratch:** a plain notepad that saves itself. Press "Sort" and lines become ideas or to-dos.
 - **Ideas:** park first, then evaluate with a short step-by-step flow:
   1. Eisenhower: important? urgent? → Do now, Schedule, Delegate, Drop or defer
   2. Core and Context (Geoffrey Moore): would a customer notice? does it hurt within a week? → Invent, Deploy, Manage, Offload
@@ -62,6 +63,24 @@ docker compose up -d
 
 The container runs as your user, so `./data` stays writable and owned by you.
 
+### Proxmox VE (LXC, without Docker)
+
+Run this on the Proxmox host as root:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/lcsfls/orbital/main/scripts/proxmox-lxc.sh
+less proxmox-lxc.sh   # have a look first
+bash proxmox-lxc.sh
+```
+
+- The script asks for an ID, hostname, disk size, CPU, RAM, bridge, IP (DHCP or static) and port.
+- **Storage is never guessed.** You pick the storage for the container disk and the one for the template, and only storages that Proxmox reports as active and allowed for `rootdir` or `vztmpl` show up. Free space is checked before anything is created. If no suitable storage exists, the script stops and explains why.
+- It creates an unprivileged Debian container (1 core, 512 MB RAM, 4 GB disk by default) and installs Node.js 22 (official binary, checksum verified) and Orbital as a systemd service. No Docker.
+- Optionally it creates a setup token, so nobody else can create the first admin account before you.
+- Data lives in `/var/lib/orbital` and settings in `/etc/orbital/orbital.env`. A normal Proxmox backup of the container includes everything.
+- To update: `pct exec <id> -- orbital-update`.
+- For unattended runs, set the answers as variables, for example `YES=1 CTID=120 STORAGE=local-lvm TEMPLATE_STORAGE=local BRIDGE=vmbr0 IP=dhcp bash proxmox-lxc.sh`. The variables are listed at the top of the script.
+
 ### Without Docker (development)
 
 ```bash
@@ -94,6 +113,7 @@ Admins can change the AI settings later in the app (Settings → Local AI). The 
 ## Accounts and people
 
 - On first start Orbital shows "Welcome to Orbital", and the account you create becomes the admin.
+- Every new account gets a short setup (about a minute, skippable): give your companion a name and a colour, say what it should call you, choose how lively things should be, and optionally add a first to-do. You can change all of it later under **Settings → Your companion** or run the setup again.
 - Admins add people under **Settings → People**. They can set a new password, pause an account, make someone admin or delete them (which also deletes that person's data). There is always at least one active admin.
 - Everyone can change their name and password under **Settings → You**.
 - Passwords are stored as scrypt hashes. Sessions use an HttpOnly, SameSite=Lax cookie, stay valid while in use and expire after 30 idle days. Every write request needs an `X-Orbital: 1` header (CSRF protection). After 10 failed logins within 15 minutes, logins for that name and address are paused.
@@ -224,13 +244,14 @@ The smoke test builds the image, starts a container, calls `/healthz`, creates d
 
 ## Manual test checklist
 
-- [ ] `docker compose up -d`, open the app, create the admin account.
+- [ ] `docker compose up -d`, open the app, create the admin account. The setup follows: pick a name and colour for the companion, and the sidebar robot takes that colour.
 - [ ] Ideas: type an idea, press Enter. It shows "Parked. Not evaluated yet." and +5 XP.
 - [ ] Open it, "Evaluate now": one question per step, back works, result shows, Save gives +15 XP.
 - [ ] Choose context + "hurts within a week": the next step suggests "must happen" with reason "Context, mission-critical", the economics step is skipped, the result is "Keep running – minimise effort".
 - [ ] Mark an idea as must happen with "Not important / Not urgent": it stays first in the list, Today shows "One thing needs you", Orbit waits with a badge.
 - [ ] "Make it a project", add two tasks, tick one: +20 XP, Orbit does a fast lap, a little confetti.
 - [ ] Today shows exactly one next step, and "Not now, show another" switches to the next.
+- [ ] To-do: add three things with Enter, tick one off (+20 XP), it moves to "Done". "Move to a project" moves an item, and "Clear done items" empties the done list.
 - [ ] Scratch: type 4 lines (one with "-", one ending with "?"), wait for "Saved", press Ctrl+Enter, untick one, accept: the unticked line stays and the rest is created.
 - [ ] Ctrl+Shift+N jumps to Scratch from any view (some browsers reserve this shortcut. Then use the sidebar).
 - [ ] Paste three lines into the idea field: the sorting review opens instead of a long title.

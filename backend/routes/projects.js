@@ -71,6 +71,9 @@ module.exports = function projectsRouter(ctx) {
     const patch = items.toRow(validate(req.body, items.PROJECT_SCHEMA, { partial: true }));
     const now = ctx.nowIso();
     const row = { ...prev, ...patch, updated_at: now };
+    if (prev.kind === 'inbox' && patch.status === 'completed') {
+      throw new HttpError(409, 'invalid_state', 'The to-do list cannot be completed. Clear done items instead.');
+    }
     items.applyCoreContext(prev, row, patch, now);
     if (row.status === 'completed' && prev.status !== 'completed') row.completed_at = now;
     if (row.status === 'active') row.completed_at = null;

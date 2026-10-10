@@ -306,7 +306,7 @@ details.fold > div { padding-bottom: 20px; }
 .orbit .o-sparks { fill: var(--sun); display: none; }
 .orbit .o-antenna { stroke: var(--sky); stroke-width: 2.5; stroke-linecap: round; }
 .orbit .o-antenna-dot { fill: var(--sky); }
-.orbit .o-body { fill: #f3effa; }
+.orbit .o-body { fill: var(--orbit-body, #f3effa); transition: fill .3s; }
 .orbit .o-ink { fill: #23213a; }
 .orbit .o-shine { fill: #f3effa; }
 .orbit .o-line, .orbit .o-mouth { stroke: #23213a; stroke-width: 2; fill: none; stroke-linecap: round; }
@@ -375,6 +375,8 @@ body.no-fx .orbit .o-sparks { display: none !important; }
   .nav a { flex-direction: column; gap: 2px; padding: 6px 4px; font-size: 12px; }
   .nav .dot { position: absolute; top: 6px; right: 10px; margin: 0; }
   .side-foot { margin: 0; padding: 0; border: 0; }
+  .side-foot a[data-tab="guide"] { display: none; }
+  .nav a { min-width: 0; }
   .main { padding: 24px 16px 120px; }
   .mobile-top { display: flex; }
   h1 { font-size: 28px; }
@@ -467,3 +469,22 @@ body.room-open { overflow: hidden; }
 .home-room .s { color: var(--muted); }
 @media (min-width: 861px) { .home-rooms { grid-template-columns: repeat(3, 1fr); } .home-room { flex-direction: column; align-items: flex-start; } }
 .room-selected { display: grid; gap: 8px; background: var(--sun-soft); border-radius: 16px; padding: 12px 14px; margin-bottom: 12px; }
+
+/* To-do list */
+.todo-list { padding: 6px 20px; }
+.todo-list .task { padding: 12px 4px; }
+.todo-list .task .tt { font-size: 18px; }
+.settings-guide { display: none; }
+@media (max-width: 860px) { .settings-guide { display: block; } }
+
+/* First-run setup */
+.onboard-card { text-align: center; }
+.onboard-card .onboard-orbit .orbit { margin: 0 auto 16px; }
+.onboard-card .onboard-body { text-align: left; }
+.onboard-card .onboard-body h1, .onboard-card .onboard-body .lead { text-align: center; margin-left: auto; margin-right: auto; }
+.onboard-card .steps { max-width: 260px; margin: 0 auto 22px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px; }
+.swatch { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 6px; border-radius: 16px; border: 2px solid var(--line); background: transparent; cursor: pointer; }
+.swatch span { width: 40px; height: 40px; border-radius: 12px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.swatch.on { border-color: var(--sun); background: var(--sun-soft); font-weight: 600; }
