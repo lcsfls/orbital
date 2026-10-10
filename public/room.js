@@ -46,7 +46,38 @@ const ACTIONS = {
   grill: { verb: 'Light the grill', fx: 'grill', say: ['The grill is warm.', 'Something nice is coming.'] },
   lantern: { verb: 'Switch the lantern', fx: 'light', say: ['Lantern on.', 'Lantern off. Stars are enough.'] },
 };
-const TAP_ORBIT = ['Hi. Nice to see you.', 'Orbiting the core. Nothing urgent.', 'Parking is deciding, not failing.', 'One more lap.'];
+const TAP_ORBIT = ['Hi. Nice to see you.', 'Orbiting the core. Nothing urgent.', 'Parking is deciding, not failing.', 'One more lap.', 'I like it when you visit.', 'Pat pat. Thank you.'];
+const TICKLE = ['That tickles.', 'Hehe. Again?', 'Okay, okay. One spin for you.'];
+// {item} and {room} are filled in.
+const THANKS = [
+  'Thank you for the {item}. My {room} feels more like home.',
+  'A {item}. I love it. Thank you.',
+  'You upgraded my {room}. Thank you, really.',
+  'Look at this {item}. You earned it, and I get to enjoy it too.',
+];
+const PLACED = ['Right there. Good spot.', 'Nice. That fits.', 'Oh, that looks good there.', 'Better. I like it.'];
+// Small talk about things in the room, said now and then while you are around.
+const TALK = {
+  sofa: 'This sofa is the best place for a short break.',
+  armchair: 'The armchair is my reading spot. Sometimes.',
+  'floor-lamp': 'The lamp makes evenings softer.',
+  bookshelf: 'So many books. One page at a time.',
+  monstera: 'I think the monstera grew a little.',
+  tv: 'We could watch something later. No pressure.',
+  aquarium: 'The fish look calm today.',
+  telescope: 'Tonight the stars should be clear.',
+  rug: 'The rug is perfect for a little dance.',
+  workbench: 'The workbench is waiting for small projects.',
+  'server-rack': 'All the lights are green. Good.',
+  '3d-printer': 'I could print a tiny you.',
+  toolbox: 'Everything is in its place.',
+  hammock: 'The hammock is calling. Quietly.',
+  tree: 'The apples look good this year.',
+  pond: 'The pond is very still.',
+  'bird-house': 'A bird was here earlier.',
+  car: 'The car is shiny. Mostly.',
+};
+const GENERIC_TALK = ['I like what you did with the place.', 'It is cozy here.', 'Thanks for spending a moment with me.'];
 const ASK_CHIPS = ['What should I do next?', 'I am tired.', 'Cheer me up.'];
 
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -63,6 +94,7 @@ export function supported() {
 
 export function openRoom(opts) {
   const { api, home, effects, toast, celebrate, onClose, onState, message, aiEnabled } = opts;
+  const today = opts.today || { done: 0, userName: '' };
   const NAME = opts.companion?.name || 'Orbit';
   const BODY = new THREE.Color(opts.companion?.color || '#f3effa');
   let state = home.state;
@@ -558,7 +590,9 @@ export function openRoom(opts) {
   tip.position.set(0, 0.43, 0);
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.012, 8, 64), new THREE.MeshBasicMaterial({ color: 0xf2b36b, transparent: true, opacity: 0.55 }));
   ring.rotation.x = Math.PI / 2.4;
-  orbit.add(body, eyeL, eyeR, cheekL, cheekR, mouth, antenna, tip, ring);
+  // An invisible, larger hit area, so tapping the small robot works on a phone too.
+  const hitBox = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 8), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
+  orbit.add(body, eyeL, eyeR, cheekL, cheekR, mouth, antenna, tip, ring, hitBox);
   orbit.traverse((o) => (o.userData.orbit = true));
   orbit.scale.setScalar(1.3);
   const shadowDisc = new THREE.Mesh(new THREE.CircleGeometry(0.3, 24), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.18 }));
@@ -595,9 +629,11 @@ export function openRoom(opts) {
   const timed = [];
   function burst(kind, at, n = 14) {
     if (!motion) return;
-    const colors = { water: 0x8fb8e8, stars: 0xf2d27b, sparks: 0xf2b36b, bubbles: 0xf3effa, smoke: 0xb1adc6 };
+    const colors = { water: 0x8fb8e8, stars: 0xf2d27b, sparks: 0xf2b36b, bubbles: 0xf3effa, smoke: 0xb1adc6, hearts: 0xf2a3b8 };
     for (let i = 0; i < n; i += 1) {
-      const m = new THREE.Mesh(new THREE.SphereGeometry(kind === 'bubbles' ? 0.05 : 0.03, 8, 6), new THREE.MeshBasicMaterial({ color: colors[kind], transparent: true, opacity: kind === 'bubbles' ? 0.7 : 1 }));
+      const geo = kind === 'hearts' ? heartGeo() : new THREE.SphereGeometry(kind === 'bubbles' ? 0.05 : 0.03, 8, 6);
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: colors[kind], transparent: true, opacity: kind === 'bubbles' ? 0.7 : 1, side: THREE.DoubleSide }));
+      if (kind === 'hearts') m.rotation.y = Math.random() * Math.PI;
       m.position.copy(at).add(new THREE.Vector3((Math.random() - 0.5) * 0.5, Math.random() * 0.2, (Math.random() - 0.5) * 0.5));
       const up = kind === 'water' ? -1 - Math.random() : 0.4 + Math.random() * 0.8;
       const spread = kind === 'smoke' ? 0.2 : 0.7;
@@ -606,6 +642,16 @@ export function openRoom(opts) {
       particles.push({ m, v, life: 0, max: kind === 'smoke' ? 2 : 0.9 + Math.random() * 0.5 });
     }
   }
+  function heartGeo() {
+    const h = new THREE.Shape();
+    h.moveTo(0, -0.05);
+    h.bezierCurveTo(-0.08, 0.0, -0.06, 0.07, 0, 0.035);
+    h.bezierCurveTo(0.06, 0.07, 0.08, 0.0, 0, -0.05);
+    return new THREE.ShapeGeometry(h);
+  }
+  const heartsAt = (p, n = 8) => burst('hearts', p.clone(), n);
+  const fill = (line, item) => line.replace('{item}', item.name.toLowerCase()).replace('{room}', ROOMS[roomId].label.toLowerCase());
+
   function during(ms, tick, done) {
     if (!motion) {
       if (done) done();
@@ -787,6 +833,10 @@ export function openRoom(opts) {
   let mowing = false;
   let orbitReply = '';
   let suppressClick = false;
+  let pets = [];
+  let lastActive = performance.now();
+  let nextTalk = performance.now() + 45000;
+  let wished = false;
   const owned = () => new Set(state.owned_items);
   const cozy = () => Math.min(100, items.size * 14 + lit.size * 8);
 
@@ -923,8 +973,19 @@ export function openRoom(opts) {
       const [x, z] = freeCellNear(Math.floor(GRID.w / 2), Math.floor(GRID.d / 2), id);
       await saveLayout(id, x, z, 0);
       celebrate('One more lap.');
-      bot.happyUntil = performance.now() + 3600;
-      say(`${catalogue[id].name}. Looks good here.`);
+      const it = items.get(id);
+      const thanks = fill(pick(THANKS), catalogue[id]);
+      if (it) {
+        const spot = it.group.position.clone().setY(HOVER);
+        moveTo(spot.clone().add(new THREE.Vector3(0, 0.2, 0.6)), () => {
+          lookAt(it.group.position);
+          bot.act = 'dance';
+          bot.actUntil = performance.now() + 1600;
+          heartsAt(spot.clone().setY(1.4), 10);
+        });
+      }
+      bot.happyUntil = performance.now() + 5000;
+      say(thanks, 5200);
     } catch (err) {
       toast(err.message, { warn: true });
     }
@@ -1123,7 +1184,7 @@ export function openRoom(opts) {
   }
   function hit(clientX, clientY) {
     setRay(clientX, clientY);
-    const targets = [body, ...[...items.values()].flatMap((i) => i.meshes)];
+    const targets = [hitBox, ...[...items.values()].flatMap((i) => i.meshes)];
     const h = ray.intersectObjects(targets, false)[0];
     const p = floorPoint();
     if (h?.object.userData.orbit) return { orbit: true, point: p };
@@ -1165,6 +1226,7 @@ export function openRoom(opts) {
   const el = renderer.domElement;
   el.style.touchAction = 'none';
   el.addEventListener('pointerdown', (e) => {
+    lastActive = performance.now();
     try {
       el.setPointerCapture(e.pointerId);
     } catch {
@@ -1259,6 +1321,7 @@ export function openRoom(opts) {
         it.cell = d.cell;
         positionItem(it, d.cell, it.rot);
         await saveLayout(d.id, d.cell[0], d.cell[1], it.rot);
+        if (Math.random() < 0.35) say(pick(PLACED), 2200);
       } else {
         positionItem(it, d.start, it.rot);
         if (!d.ok) toast('Something already stands there.');
@@ -1284,8 +1347,17 @@ export function openRoom(opts) {
     if (!h) return;
     if (mode === 'play') {
       if (h.orbit) {
-        bot.happyUntil = performance.now() + 3000;
-        say(message || pick(TAP_ORBIT));
+        const now = performance.now();
+        pets = pets.filter((t) => now - t < 1500);
+        pets.push(now);
+        bot.happyUntil = now + 3000;
+        heartsAt(orbit.position.clone().add(new THREE.Vector3(0, 0.5, 0)), pets.length >= 3 ? 12 : 5);
+        if (pets.length >= 3) {
+          bot.act = 'dance';
+          bot.actUntil = now + 1400;
+          pets = [];
+          say(pick(TICKLE), 2600);
+        } else say(message || pick(TAP_ORBIT));
         return;
       }
       if (h.item) {
@@ -1382,6 +1454,7 @@ export function openRoom(opts) {
             selected = id;
             await saveLayout(id, cell[0], cell[1], 0);
             bot.happyUntil = performance.now() + 2500;
+            say(pick(PLACED), 2400);
           } else if (cell) toast('Something already stands there.');
         }
         window.addEventListener('pointermove', move, { passive: false });
@@ -1463,6 +1536,21 @@ export function openRoom(opts) {
     } else if (motion && mode === 'play' && !mowing && !bot.act && now > bot.nextWander) {
       if (bot.nextWander) moveTo(cellCenter(Math.floor(Math.random() * GRID.w), Math.floor(Math.random() * GRID.d)).setY(HOVER));
       bot.nextWander = now + 9000 + Math.random() * 8000;
+    }
+    if (mode === 'play' && !mowing && bubble.hidden && now > nextTalk) {
+      nextTalk = now + 45000 + Math.random() * 30000;
+      if (now - lastActive < 90000) {
+        const here = [...items.keys()];
+        const affordable = home.catalogue.filter((i) => i.room === roomId && !state.owned_items.includes(i.id) && state.xp_balance >= i.price);
+        if (!wished && affordable.length && Math.random() < 0.5) {
+          wished = true;
+          const w = pick(affordable);
+          say(`If you like, a ${w.name.toLowerCase()} would fit nicely here. You have the points. No rush.`, 6000);
+        } else {
+          const known = here.filter((id) => TALK[id]);
+          say(known.length && Math.random() < 0.75 ? TALK[pick(known)] : pick(GENERIC_TALK), 4200);
+        }
+      }
     }
     if (bot.act && now > bot.actUntil) {
       if (bot.act === 'sit') bot.pos.y = HOVER;
@@ -1570,7 +1658,16 @@ export function openRoom(opts) {
   syncFurniture();
   renderPanel();
   frame();
-  setTimeout(() => say(items.size ? ROOMS[roomId].hello : `${ROOMS[roomId].hello} It is a bit empty still.`), motion ? 400 : 0);
+  const hi = today.userName ? `Hi, ${today.userName}.` : 'Hi.';
+  const greet = today.done > 0
+    ? `${hi} You finished ${today.done === 1 ? 'one thing' : `${today.done} things`} today. Thank you for coming by.`
+    : items.size
+      ? `${hi} ${ROOMS[roomId].hello}`
+      : `${hi} ${ROOMS[roomId].hello} It is a bit empty still. Arrange lets you bring things in.`;
+  setTimeout(() => {
+    say(greet, 4600);
+    if (today.done > 0) heartsAt(orbit.position.clone().add(new THREE.Vector3(0, 0.5, 0)), 6);
+  }, motion ? 400 : 0);
   $r('close').focus();
   return { close };
 }

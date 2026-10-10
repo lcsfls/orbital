@@ -64,7 +64,7 @@ module.exports = function tasksRouter(ctx) {
       .prepare("SELECT 1 FROM xp_events WHERE user_id = ? AND ref_type = 'task' AND ref_id = ? AND action IN ('task_done','mandatory_done')")
       .get(ctx.uid(), id);
     if (already) return null;
-    return ctx.game.award(row.mandatory ? 'mandatory_done' : 'task_done', 'task', id);
+    return ctx.game.award(row.mandatory ? 'mandatory_done' : 'task_done', 'task', id, { title: row.title });
   };
 
   router.patch('/:id', (req, res) => {

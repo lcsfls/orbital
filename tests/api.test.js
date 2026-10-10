@@ -7,6 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { startServer, ADMIN } = require('./helpers');
 const { openDatabase } = require('../backend/db');
+const { POOLS } = require('../backend/praise');
 
 const EVAL = { importance: 'important', urgency: 'urgent', core_context: 'core', mission_critical: 'yes' };
 
@@ -177,14 +178,14 @@ test('XP rules: evaluate, park, drop, daily cap on new ideas, no double rewards'
 
   const park = await s.patch('/api/ideas/1', { status: 'parked' });
   assert.equal(park.body.reward.xp, 10);
-  assert.equal(park.body.reward.message, 'Parking is deciding, not failing.');
+  assert.ok(POOLS.park.includes(park.body.reward.message));
 
   const again = await s.patch('/api/ideas/1', { status: 'evaluated' });
   assert.equal(again.body.reward, null);
 
   const drop = await s.patch('/api/ideas/2', { status: 'dropped' });
   assert.equal(drop.body.reward.xp, 10);
-  assert.equal(drop.body.reward.message, 'That was a real decision.');
+  assert.ok(POOLS.drop.includes(drop.body.reward.message));
 
   const g = await s.get('/api/gamification');
   assert.equal(g.body.xp_total, 15 + 15 + 10 + 10);
@@ -208,7 +209,7 @@ test('projects and tasks: CRUD, progress, task and project XP', async (t) => {
 
   const d1 = await s.patch(`/api/tasks/${t1.body.item.id}`, { status: 'done' });
   assert.equal(d1.body.reward.xp, 20);
-  assert.equal(d1.body.reward.message, 'Done beats perfect.');
+  assert.equal(d1.body.reward.message, 'First thing done today. The first one is always the hardest.');
   // Toggling back and forth does not farm XP.
   await s.patch(`/api/tasks/${t1.body.item.id}`, { status: 'todo' });
   const d1b = await s.patch(`/api/tasks/${t1.body.item.id}`, { status: 'done' });

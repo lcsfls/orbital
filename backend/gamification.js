@@ -43,6 +43,8 @@ const ACTION_MESSAGE = {
 // Calm body colours for the companion robot. The id is stored, the UI maps it to a colour.
 const COMPANION_COLORS = ['moon', 'sky', 'mint', 'peach', 'rose', 'lilac', 'sand'];
 
+const praise = require('./praise');
+
 const DEFAULT_SETTINGS = { effects: true, sound: false, companion_name: 'Orbit', companion_color: 'moon', onboarded: false };
 
 // Level n starts at 50 * n * (n - 1) XP: 0, 100, 300, 600, 1000, ...
@@ -117,7 +119,8 @@ function createGamification(db, clock, uid) {
   const today = () => dayOf(clock.now(), clock.timeZone);
 
   // Awards XP for one action. Returns the reward or null if not rewarded.
-  function award(action, refType = null, refId = null) {
+  // `context.title` lets the praise notice what kind of thing was done.
+  function award(action, refType = null, refId = null, context = {}) {
     const xp = XP[action];
     if (!xp) throw new Error(`Unknown action ${action}`);
     const day = today();
@@ -129,8 +132,9 @@ function createGamification(db, clock, uid) {
     const row = getRow.get();
     const streak = nextStreak(row.streak, row.last_active_day, day);
     updateRow.run(row.xp_total + xp, streak, Math.max(row.best_streak, streak), day);
-    const rotate = MESSAGES.celebrate[countAll.get().n % MESSAGES.celebrate.length];
-    return { action, xp, message: ACTION_MESSAGE[action] || rotate };
+    const doneToday = countDay.get('task_done', day).n + countDay.get('mandatory_done', day).n;
+    const message = praise.pick({ action, title: context.title, doneToday, streak, firstToday: row.last_active_day !== day });
+    return { action, xp, message };
   }
 
   // Combines several rewards from one request into one.

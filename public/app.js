@@ -700,9 +700,65 @@
   // ---------- Sheet and modal ----------
   const sheet = $('#sheet');
   const modal = $('#modal');
+  // Calm height animations for anything that opens or closes. Skipped without effects.
+  const EASE_OUT = 'cubic-bezier(.2, .8, .2, 1)';
+  const canAnimate = () => effectsOn() && !document.hidden;
+  function animateOpen(el) {
+    if (!el || !canAnimate()) return;
+    const h = el.scrollHeight;
+    el.style.overflow = 'hidden';
+    const a = el.animate([{ height: '0px', opacity: 0 }, { height: `${h}px`, opacity: 1 }], { duration: 220, easing: EASE_OUT });
+    a.onfinish = a.oncancel = () => (el.style.overflow = '');
+  }
+  function animateClose(el) {
+    return new Promise((resolve) => {
+      if (!el || !canAnimate()) return resolve();
+      el.style.overflow = 'hidden';
+      const a = el.animate([{ height: `${el.scrollHeight}px`, opacity: 1 }, { height: '0px', opacity: 0 }], { duration: 170, easing: 'ease-in', fill: 'forwards' });
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        el.style.overflow = '';
+        resolve();
+        // After the caller re-rendered or closed, drop the held end state.
+        requestAnimationFrame(() => a.cancel());
+      };
+      a.onfinish = a.oncancel = finish;
+      // Hidden tabs pause animations; never let that block closing.
+      setTimeout(finish, 260);
+    });
+  }
+  function turnChevron(el, from, to) {
+    if (!el || !canAnimate()) return;
+    el.animate([{ transform: `rotate(${from}deg)` }, { transform: `rotate(${to}deg)` }], { duration: 220, easing: EASE_OUT });
+  }
+
+  // Foldable sections (details.fold): animate instead of jumping.
+  document.addEventListener('click', (e) => {
+    const summary = e.target.closest('details.fold > summary');
+    if (!summary || !canAnimate()) return;
+    e.preventDefault();
+    const d = summary.parentElement;
+    const body = d.querySelector(':scope > div');
+    if (!d.open) {
+      d.open = true;
+      animateOpen(body);
+    } else {
+      d.classList.add('closing');
+      animateClose(body).then(() => {
+        d.open = false;
+        d.classList.remove('closing');
+      });
+    }
+  });
+
   function openSheet(html) {
+    const wasOpen = sheet.open;
     sheet.innerHTML = `<div class="sheet-inner">${html}</div>`;
     if (!sheet.open) sheet.showModal();
+    // A new step inside an open sheet slides in softly, so the change is visible.
+    else if (wasOpen && effectsOn()) sheet.querySelector('.sheet-body')?.animate([{ opacity: 0, transform: 'translateX(14px)' }, { opacity: 1, transform: 'none' }], { duration: 200, easing: EASE_OUT });
     const first = sheet.querySelector('[autofocus]') || sheet.querySelector('.sheet-body button, .sheet-body input');
     first?.focus();
   }
@@ -1794,6 +1850,10 @@
         home: S.home,
         room,
         companion: { name: cname(), color: ccolor() },
+        today: {
+          userName: S.user.display_name || '',
+          done: S.projects.flatMap((p) => p.tasks).filter((t) => t.done_at && new Date(t.done_at).toDateString() === new Date().toDateString()).length,
+        },
         aiEnabled: Boolean(S.config.ai_enabled),
         effects: effectsOn(),
         message: S.game?.alert_count ? MSG.alert : null,
@@ -1919,7 +1979,21 @@
         }
         return;
       }
-      case 'toggle-project': S.openProject = S.openProject === id ? null : id; return render();
+      case 'toggle-project': {
+        const card = (pid) => $(`.project[data-flash="project-${pid}"]`);
+        const prev = S.openProject;
+        if (prev) {
+          turnChevron(card(prev)?.querySelector('.chev'), 90, 0);
+          await animateClose(card(prev)?.querySelector('.tasks'));
+        }
+        S.openProject = prev === id ? null : id;
+        render();
+        if (S.openProject) {
+          animateOpen(card(id)?.querySelector('.tasks'));
+          turnChevron(card(id)?.querySelector('.chev'), 0, 90);
+        }
+        return;
+      }
       case 'new-project': return projectForm();
       case 'project-more': return projectForm(projectById(id));
       case 'p-pick': {
