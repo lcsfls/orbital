@@ -78,7 +78,7 @@ bash proxmox-lxc.sh
 - It creates an unprivileged Debian container (1 core, 512 MB RAM, 4 GB disk by default) and installs Node.js 22 (official binary, checksum verified) and Orbital as a systemd service. No Docker.
 - Optionally it creates a setup token, so nobody else can create the first admin account before you.
 - Data lives in `/var/lib/orbital` and settings in `/etc/orbital/orbital.env`. A normal Proxmox backup of the container includes everything.
-- To update: `pct exec <id> -- orbital-update`.
+- To update: `pct exec <id> -- /usr/local/bin/orbital-update` on the host, or `orbital-update` inside the container (`pct enter <id>`).
 - For unattended runs, set the answers as variables, for example `YES=1 CTID=120 STORAGE=local-lvm TEMPLATE_STORAGE=local BRIDGE=vmbr0 IP=dhcp bash proxmox-lxc.sh`. The variables are listed at the top of the script.
 
 ### Without Docker (development)
@@ -130,6 +130,46 @@ Admins can change the AI settings later in the app (Settings → Local AI). The 
 5. Authelia is optional. Orbital has its own accounts, so forward auth just adds a second layer.
 
 For a local model on the same machine, `host.docker.internal` already points to the host (via `extra_hosts`). For Ollama on another box, use its LAN address, for example `http://192.168.1.20:11434/v1`.
+
+## Updating
+
+Your data stays where it is. Updates never touch `./data` (Docker) or `/var/lib/orbital` (LXC). Taking a backup first is still a good habit (see below).
+
+**Docker:**
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+**Proxmox LXC (created with `scripts/proxmox-lxc.sh`).** On the Proxmox host:
+
+```bash
+pct exec <id> -- /usr/local/bin/orbital-update
+```
+
+Or inside the container (after `pct enter <id>`):
+
+```bash
+orbital-update
+```
+
+If `orbital-update` is not found, the container was set up with an older version of the script. Run the newest script once on the host with `--resume`, which repairs it and keeps your data:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/lcsfls/orbital/main/scripts/proxmox-lxc.sh
+bash proxmox-lxc.sh --resume <id>
+```
+
+**Without Docker:**
+
+```bash
+git pull
+npm ci --omit=dev
+# then restart however you run it, for example: systemctl restart orbital
+```
+
+After an update, reload the page in the browser.
 
 ## Backup and restore
 

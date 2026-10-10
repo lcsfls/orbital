@@ -103,6 +103,9 @@ free_gib() { storages_for "$1" | awk -F'|' -v s="$2" '$1 == s { print int($3) }'
 
 # ---------- checks ----------
 [ "$(id -u)" = 0 ] || die "Run this as root on the Proxmox host."
+if [ -f /etc/orbital/orbital.env ] || [ -d /opt/orbital/.git ]; then
+  die "This is the Orbital container itself. Run this script on the Proxmox host. To update Orbital here, run: orbital-update"
+fi
 command -v pct >/dev/null 2>&1 && command -v pvesm >/dev/null 2>&1 && command -v pveam >/dev/null 2>&1 \
   || die "This does not look like a Proxmox VE host (pct, pvesm or pveam missing)."
 info "Proxmox VE $(pveversion | cut -d/ -f2)"
@@ -209,7 +212,7 @@ pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}" \
   --features nesting=1 \
   --onboot 1 \
   --tags orbital \
-  --description "Orbital – calm idea and project tracker. Data: /var/lib/orbital. Update: orbital-update"
+  --description "Orbital – calm idea and project tracker. Data: /var/lib/orbital. Update: pct exec <id> -- /usr/local/bin/orbital-update"
 if ! pct start "$CTID"; then
   echo
   echo "Container $CTID was created but does not start."
@@ -321,6 +324,13 @@ ReadWritePaths=/var/lib/orbital
 WantedBy=multi-user.target
 UNIT
 
+# Make /usr/local/bin part of every login shell, so orbital-update works after pct enter.
+cat >/etc/profile.d/orbital.sh <<'PROFILE'
+case ":\$PATH:" in *:/usr/local/bin:*) ;; *) PATH="/usr/local/bin:\$PATH" ;; esac
+export PATH
+PROFILE
+chmod 644 /etc/profile.d/orbital.sh
+
 cat >/usr/local/bin/orbital-update <<'UPD'
 #!/usr/bin/env bash
 # Updates Orbital to the newest version of its branch. Data in /var/lib/orbital is kept.
@@ -365,5 +375,5 @@ echo
 echo "  Open:          http://${ADDR:-<container-ip>}:${PORT}"
 [ -n "$SETUP_TOKEN" ] && echo "  Setup token:   $SETUP_TOKEN   (asked once, when you create the admin account)"
 echo "  Settings:      pct enter $CTID, then edit /etc/orbital/orbital.env and run: systemctl restart orbital"
-echo "  Update:        pct exec $CTID -- orbital-update"
+echo "  Update:        pct exec $CTID -- /usr/local/bin/orbital-update"
 echo "  Backup:        a normal Proxmox backup of CT $CTID includes everything (data: /var/lib/orbital)"
